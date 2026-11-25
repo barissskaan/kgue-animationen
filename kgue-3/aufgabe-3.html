@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGÜ 3 · Aufgabe 3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Gleicher Aufbau wie die KGÜ-5-Seiten: bewusst nur hell (Beamer).
+   Oben ein RAM-Riegel mit 64 KiB, darunter die Freiliste des Betriebssystems.
+   Regel: erst Text, Animation erst nach Klick. Keine Emoji. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f1f2f5;
+  --warn: #c2410c; --ok: #3f6f12; --hl: #fff1a8; --ptr: #ffd400; --cand: #2f5fb8;
+  --used: #c8463a; --pcb: #1d6b47; --pcb2: #175a3b; --gold: #d6a531;
+  --r0: #2f5fb8; --r1: #4d7c0f; --r2: #7a4fd0; --r3: #0e7490; --r4: #a16207;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 10px 16px 10px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 24px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.top .act { color: var(--fg); }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--cand); outline-offset: 2px; }
+code, .mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+.cap code { font-size: 0.9em; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 0 0; }
+.stage.noanim, .stage.noanim * { transition: none !important; animation: none !important; }
+.lab { position: absolute; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.layer { position: absolute; inset: 0; transition: opacity 0.5s; }
+.off { opacity: 0; pointer-events: none; }
+
+/* Warteschlange der Anfragen */
+#qlab { left: 12px; top: 18px; transition: opacity 0.5s; }
+.slot { position: absolute; top: 6px; width: 78px; height: 42px; border: 2px dashed var(--line); border-radius: 9px; transition: opacity 0.5s; }
+.req { position: absolute; z-index: 4; display: flex; align-items: center; justify-content: center; gap: 4px; color: #fff; border: 2px solid var(--fg); border-radius: 9px;
+  font-family: var(--font-mono); font-weight: 600; font-size: 21px; overflow: hidden; white-space: nowrap;
+  transition: left 1s ease-in-out, top 1s ease-in-out, width 1s ease-in-out, height 1s ease-in-out, border-radius 1s, opacity 0.5s, transform 0.5s, box-shadow 0.4s; }
+.req small { font-size: 13px; font-weight: 400; transition: opacity 0.4s; }
+.req.in { border-radius: 0; border-width: 1.5px; }
+.req.in small { opacity: 0; width: 0; }
+.req.now { box-shadow: 0 0 0 5px var(--ptr); }
+.req.hide { opacity: 0; transform: translateY(-14px); }
+.req.extra { background: #fff; color: var(--fg); border-style: dashed; }
+#rule { position: absolute; right: 10px; top: 6px; height: 42px; border: 2px solid var(--fg); border-radius: 10px; background: var(--hl); padding: 0 14px; display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; transition: opacity 0.4s; white-space: nowrap; }
+#rule small { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+
+/* RAM-Riegel */
+#dimm { position: absolute; left: 10px; top: 60px; width: 980px; height: 182px; }
+.mem { position: absolute; box-sizing: content-box; left: 30px; top: 40px; width: 920px; height: 80px; background: #fff; border: 2px solid #0d3b26; overflow: hidden; }
+.used { position: absolute; top: 0; height: 100%; background: var(--used); transition: opacity 0.6s; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; font-weight: 600; letter-spacing: 0.04em; }
+.grid { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.gapfill { position: absolute; top: 0; height: 100%; background: var(--ptr); opacity: 0; transition: opacity 0.4s, left 0.6s, width 0.6s; }
+.gapfill.on { opacity: 0.45; }
+.gt { position: absolute; top: 9px; width: 28px; height: 28px; margin-left: -14px; border-radius: 50%; background: #fff; border: 2px solid #0d3b26; text-align: center; line-height: 24px; font-weight: 600; font-size: 16px;
+  transition: left 0.8s ease-in-out, opacity 0.5s, background 0.3s, transform 0.4s; }
+.gt.pick { background: var(--ptr); transform: scale(1.15); }
+.addr { position: absolute; top: 124px; transform: translateX(-50%); font-family: var(--font-mono); font-size: 12.5px; color: #e8f3ec; transition: opacity 0.5s; }
+
+/* Freiliste */
+#llab { left: 12px; top: 254px; }
+.lc { position: absolute; top: 278px; width: 196px; height: 92px; border: 2px solid var(--fg); border-radius: 12px; background: #fff; transition: opacity 0.5s, transform 0.5s, box-shadow 0.4s, border-color 0.4s; }
+.lc.hide { opacity: 0; transform: translateY(12px); }
+.lc.empty { opacity: 0.35; }
+.lc.pick { box-shadow: 0 0 0 6px var(--ptr); }
+.lc .ln { position: absolute; left: 12px; top: 12px; width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--fg); text-align: center; line-height: 32px; font-weight: 600; font-size: 20px; }
+.lc .lsz { position: absolute; left: 60px; top: 6px; font-family: var(--font-mono); font-weight: 600; font-size: 28px; line-height: 1.2; }
+.lc .lsz small { font-size: 15px; font-weight: 400; color: var(--muted); }
+.lc .lst { position: absolute; left: 60px; top: 42px; font-size: 14px; color: var(--muted); }
+.lc .flash { animation: flash 1.2s; }
+@keyframes flash { 0% { background: var(--ptr); } 100% { background: transparent; } }
+.ev { position: absolute; left: 10px; right: 10px; bottom: 6px; height: 24px; display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 15px; font-weight: 600; opacity: 0; transform: translateY(6px); transition: opacity 0.35s, transform 0.35s; }
+.ev.on { opacity: 1; transform: none; }
+.ev.yes { color: var(--ok); }
+.ev.no { color: var(--warn); }
+.ev svg { width: 18px; height: 18px; flex: none; }
+.ev span { font-family: var(--font-body); font-weight: 400; font-size: 14px; }
+.arr { position: absolute; top: 314px; width: 49px; height: 20px; transition: opacity 0.5s; }
+
+#info { position: absolute; right: 10px; top: 244px; height: 30px; display: flex; align-items: center; gap: 10px; border: 2px solid var(--fg); border-radius: 8px; padding: 0 12px; font-size: 16px; background: #fff; opacity: 0; transform: translateY(-8px); transition: opacity 0.5s, transform 0.5s; white-space: nowrap; }
+#info.on { opacity: 1; transform: none; }
+#info b { font-family: var(--font-mono); }
+#nofit { position: absolute; left: 300px; top: 244px; width: 300px; height: 30px; border: 2px solid var(--warn); color: var(--warn); background: #fff; border-radius: 8px; font-size: 17px; font-weight: 600; display: flex; align-items: center; justify-content: center; z-index: 6; opacity: 0; transform: scale(0.85); transition: opacity 0.4s, transform 0.4s; }
+#nofit.on { opacity: 1; transform: none; }
+
+/* Vergleich */
+.crow { position: absolute; left: 10px; width: 980px; height: 104px; opacity: 0; transform: translateY(14px); transition: opacity 0.5s, transform 0.5s; }
+.c1 .crow { opacity: 1; transform: none; }
+.crow h3 { position: absolute; left: 0; top: 18px; margin: 0; font-size: 21px; width: 120px; }
+.cmem { position: absolute; left: 130px; top: 6px; width: 840px; height: 52px; border: 2px solid #0d3b26; background: #fff; overflow: hidden; }
+.cmem div { position: absolute; top: 0; height: 100%; display: flex; align-items: center; justify-content: center; color: #fff; font-family: var(--font-mono); font-weight: 600; font-size: 17px; border-right: 1px solid #fff; }
+.crest { position: absolute; left: 130px; top: 64px; font-size: 16.5px; color: var(--muted); opacity: 0; transition: opacity 0.5s; }
+.c2 .crest { opacity: 1; }
+.crest b { color: var(--fg); font-family: var(--font-mono); }
+.prow { position: absolute; left: 10px; width: 980px; height: 112px; border: 2px solid var(--fg); border-radius: 12px; background: #fff; display: flex; align-items: center; gap: 16px; padding: 0 16px; opacity: 0; transform: translateY(14px); transition: opacity 0.5s, transform 0.5s; }
+.p1 .prow { opacity: 1; transform: none; }
+.prow .nm { width: 120px; font-size: 21px; font-weight: 600; line-height: 1.2; }
+.prow .pc { flex: 1; font-size: 19px; line-height: 1.32; }
+.prow .pc b { display: inline-block; width: 22px; font-family: var(--font-mono); }
+.prow .pc .plus b { color: var(--ok); }
+.prow .pc .minus b { color: var(--warn); }
+
+.cap { margin-top: 8px; min-height: 118px; }
+.cap h1 { font-size: 24px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.cap p { margin: 0; font-size: 21px; line-height: 1.35; max-width: 84ch; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot { width: 30px; height: 30px; padding: 0; border-radius: 50%; border-color: var(--line); font-family: var(--font-mono); font-size: 14px; }
+.dot[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#next { min-width: 170px; background: var(--fg); color: var(--bg); margin-left: auto; }
+#next.play { background: var(--ptr); color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="act" id="act"></span><span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+      <div class="layer" id="ram">
+        <div class="lab" id="qlab">Anfragen</div>
+        <div id="slots"></div>
+        <div id="info"></div>
+        <div id="rule"><small id="rulek"></small><span id="rulet"></span></div>
+        <div id="dimm">
+          <svg width="980" height="182" viewBox="0 0 980 182" aria-hidden="true">
+            <path d="M8 4 H972 a6 6 0 0 1 6 6 V180 H8 a6 6 0 0 1 -6 -6 V10 a6 6 0 0 1 6 -6 Z" fill="var(--pcb)" stroke="#0d3b26" stroke-width="2"/>
+            <path d="M2 70 h8 a8 8 0 0 1 0 16 h-8 Z M978 70 h-8 a8 8 0 0 0 0 16 h8 Z" fill="#fff" stroke="#0d3b26" stroke-width="2"/>
+            <g id="fingers"></g>
+            <path d="M588 182 v-14 a8 8 0 0 1 16 0 v14 Z" fill="#fff"/>
+          </svg>
+          <div class="mem" id="mem"></div>
+          <div id="tags"></div>
+          <div id="addrs"></div>
+        </div>
+        <div class="lab" id="llab">Freiliste des Betriebssystems</div>
+        <div id="list"></div>
+        <div id="nofit">Passt in keine Lücke</div>
+        <div id="reqs"></div>
+      </div>
+      <div class="layer off" id="cmp"></div>
+      <div class="layer off" id="pro"></div>
+    </div>
+  </div>
+  <div class="cap"><h1 id="ttl"></h1><p id="say"></p></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Zurück">←</button>
+    <span id="dots" style="display:flex;gap:6px"></span>
+    <button id="replay" aria-label="Teil neu starten" title="Teil neu starten (R)">↺</button>
+    <button id="again" aria-label="Letzte Animation wiederholen" title="Letzte Animation wiederholen (W)" style="display:inline-flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8 A5.5 5.5 0 1 1 11.6 3.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12.6 1 V4.6 H9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.3 5.6 L10.4 8 L6.3 10.4 Z" fill="currentColor"/></svg>Nochmal</button>
+    <button id="next">Weiter →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), box = $('box');
+
+  /* ---------- Daten aus der Aufgabe ---------- */
+  const KB = 920 / 64;                       // Pixel pro KiB im Riegel
+  const USED = [[8, 12], [28, 40], [56, 60]];
+  const GAPS0 = [{ n: 'A', s: 0, e: 8 }, { n: 'B', s: 12, e: 28 }, { n: 'C', s: 40, e: 56 }, { n: 'D', s: 60, e: 64 }];
+  const REQ = [3, 5, 11, 2, 9];
+  const EXTRA = 8;
+  const RULE = { worst: 'größte Lücke', best: 'kleinste passende Lücke', first: 'erste passende Lücke' };
+  const NAME = { worst: 'Worst Fit', best: 'Best Fit', first: 'First Fit' };
+  const size = g => g.e - g.s;
+
+  function choose(kind, gaps, r) {
+    const evals = []; let idx = -1;
+    for (let i = 0; i < gaps.length; i++) {
+      if (size(gaps[i]) <= 0) continue;           // volle Lücken stehen nicht mehr in der Liste
+      const ok = size(gaps[i]) >= r; evals.push({ i, ok });
+      if (kind === 'first') { if (ok) { idx = i; break; } continue; }
+      if (!ok) continue;
+      if (idx < 0 || (kind === 'best' ? size(gaps[i]) < size(gaps[idx]) : size(gaps[i]) > size(gaps[idx]))) idx = i; // Gleichstand: vordere bleibt
+    }
+    return { idx, evals };
+  }
+  function sim(kind, n) {
+    const gaps = GAPS0.map(g => ({ ...g })), blocks = [];
+    for (let q = 0; q < n; q++) {
+      const c = choose(kind, gaps, REQ[q]), g = gaps[c.idx];
+      blocks.push({ s: g.s, e: g.s + REQ[q], gi: c.idx }); g.s += REQ[q];
+    }
+    return { gaps, blocks };
+  }
+
+  /* ---------- Bühne aufbauen ---------- */
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  let fh = '';
+  for (let x = 30; x < 950; x += 13) if (x < 584 || x > 606) fh += '<rect x="' + x + '" y="150" width="8" height="26" rx="1.5" fill="var(--gold)" stroke="#9c7614" stroke-width="0.8"/>';
+  $('fingers').innerHTML = fh;
+
+  const mem = $('mem');
+  let mh = '';
+  USED.forEach(([s, e]) => { mh += '<div class="used" style="left:' + s * KB + 'px;width:' + (e - s) * KB + 'px">belegt</div>'; });
+  GAPS0.forEach((g, i) => { mh += '<div class="gapfill" id="gf' + i + '"></div>'; });
+  let gl = '';
+  for (let k = 1; k < 64; k++) {
+    const x = (k * KB).toFixed(2);
+    gl += k % 4 === 0 ? '<line x1="' + x + '" y1="0" x2="' + x + '" y2="80" stroke="#7d8594" stroke-width="1.5"/>'
+                      : '<line x1="' + x + '" y1="52" x2="' + x + '" y2="80" stroke="#aab0bc" stroke-width="1" stroke-dasharray="3 3"/>';
+  }
+  mh += '<svg class="grid" width="920" height="80" viewBox="0 0 920 80">' + gl + '</svg>';
+  mem.innerHTML = mh;
+  const usedEls = [...mem.querySelectorAll('.used')];
+
+  let ah = '';
+  [0, 8, 12, 28, 40, 56, 60, 64].forEach(a => { ah += '<div class="addr" style="left:' + (32 + a * KB) + 'px">' + a + '</div>'; });
+  $('addrs').innerHTML = ah;
+  const addrEls = [...$('addrs').children];
+  $('tags').innerHTML = GAPS0.map((g, i) => '<div class="gt" id="gt' + i + '">' + g.n + '</div>').join('');
+
+  const CHECK = '<svg viewBox="0 0 20 20"><path d="M3 10.5 L8 15.5 L17 4.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const CROSS = '<svg viewBox="0 0 20 20"><path d="M4 4 L16 16 M16 4 L4 16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+  let lh = '';
+  GAPS0.forEach((g, i) => {
+    lh += '<div class="lc" id="lc' + i + '" style="left:' + (12 + i * 245) + 'px"><div class="ln">' + g.n + '</div><div class="lsz"><span id="lsz' + i + '"></span> <small>KiB</small></div><div class="lst" id="lst' + i + '"></div><div class="ev" id="ev' + i + '"></div></div>';
+    if (i < 3) lh += '<svg class="arr" id="ar' + i + '" style="left:' + (210 + i * 245) + 'px" viewBox="0 0 49 20"><path d="M3 10 H40" stroke="var(--fg)" stroke-width="2.5"/><path d="M36 4 L45 10 L36 16" fill="none" stroke="var(--fg)" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+  });
+  $('list').innerHTML = lh;
+
+  const SLOTX = i => 110 + i * 88;
+  let sh = '';
+  REQ.forEach((r, i) => { sh += '<div class="slot" style="left:' + SLOTX(i) + 'px"></div>'; });
+  $('slots').innerHTML = sh;
+  const slotEls = [...$('slots').children];
+  let rh = '';
+  REQ.forEach((r, i) => { rh += '<div class="req" id="rq' + i + '" style="background:var(--r' + i + ')">' + r + '<small>KiB</small></div>'; });
+  rh += '<div class="req extra" id="rqx">+' + EXTRA + '<small>KiB</small></div>';
+  $('reqs').innerHTML = rh;
+
+  /* Vergleich: drei kleine Riegel wie in der Musterlösung */
+  const CK = 840 / 64;
+  let ch = '';
+  ['worst', 'best', 'first'].forEach((kind, row) => {
+    const r = sim(kind, 5);
+    let m = '';
+    USED.forEach(([s, e]) => { m += '<div style="left:' + s * CK + 'px;width:' + (e - s) * CK + 'px;background:var(--used)"></div>'; });
+    r.blocks.forEach((b, q) => { m += '<div style="left:' + b.s * CK + 'px;width:' + (b.e - b.s) * CK + 'px;background:var(--r' + q + ')">' + REQ[q] + '</div>'; });
+    const rest = r.gaps.filter(g => size(g) > 0), big = Math.max(...rest.map(size));
+    ch += '<div class="crow" style="top:' + (14 + row * 122) + 'px;transition-delay:' + row * 0.45 + 's"><h3>' + NAME[kind] + '</h3><div class="cmem">' + m + '</div>' +
+      '<div class="crest" style="transition-delay:' + row * 0.35 + 's">Frei: ' + rest.map(g => g.n + ' <b>' + size(g) + '</b>').join(' · ') + ' KiB &nbsp;→&nbsp; größte Lücke <b>' + big + ' KiB</b></div></div>';
+  });
+  $('cmp').innerHTML = ch;
+  const PRO = [
+    ['Worst Fit', ['Die Reste bleiben groß und sind noch brauchbar.'], ['Muss alle Lücken durchsuchen, also langsam.', 'Zerstückelt die großen Lücken. Kommt später etwas Großes, fehlt der Platz.']],
+    ['Best Fit', ['Große Lücken bleiben für große Anfragen frei.'], ['Muss alle Lücken durchsuchen.', 'Lässt winzige Reste übrig (hier zweimal 1 KiB), die kaum noch passen.']],
+    ['First Fit', ['Schnell: Hört bei der ersten passenden Lücke auf.'], ['Vorne im Speicher sammeln sich viele kleine Lücken.']]
+  ];
+  $('pro').innerHTML = PRO.map((p, i) => '<div class="prow" style="top:' + (6 + i * 124) + 'px;transition-delay:' + i * 0.5 + 's"><div class="nm">' + p[0] + '</div><div class="pc">' +
+    p[1].map(t => '<div class="plus"><b>+</b>' + t + '</div>').join('') + p[2].map(t => '<div class="minus"><b>−</b>' + t + '</div>').join('') + '</div></div>').join('');
+
+  /* ---------- Zeichnen ---------- */
+  let timers = [], busy = false, target = null;
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const stop = () => { timers.forEach(clearTimeout); timers = []; };
+  let shown = null;   // was die Freiliste gerade anzeigt (für das verzögerte Umschreiben)
+
+  function writeList(gaps, flashIdx) {
+    gaps.forEach((g, i) => {
+      $('lsz' + i).textContent = size(g);
+      $('lst' + i).textContent = size(g) > 0 ? 'ab Adresse ' + g.s + ' KiB' : 'voll';
+      $('lc' + i).classList.toggle('empty', size(g) <= 0);
+      if (i === flashIdx) { const el = $('lsz' + i).parentNode; el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+    });
+    shown = gaps;
+  }
+
+  function draw(st, anim) {
+    const instant = !anim;
+    stage.classList.toggle('noanim', instant);
+    $('ram').classList.toggle('off', st.mode !== 'ram');
+    $('cmp').classList.toggle('off', st.mode !== 'cmp');
+    $('pro').classList.toggle('off', st.mode !== 'pro');
+    $('cmp').className = 'layer' + (st.mode !== 'cmp' ? ' off' : '') + (st.c >= 1 ? ' c1' : '') + (st.c >= 2 ? ' c2' : '');
+    $('pro').className = 'layer' + (st.mode !== 'pro' ? ' off' : '') + (st.p ? ' p1' : '');
+
+    const kind = st.kind || 'first';
+    const now = sim(kind, st.n);
+    const placing = anim && st.n > 0 && shown && st.n === (st._prevN || 0) + 1;
+
+    /* belegte Bereiche und Lücken */
+    usedEls.forEach(el => { el.style.opacity = st.pre >= 1 ? 1 : 0; });
+    addrEls.forEach(el => { el.style.opacity = st.pre >= 1 ? 1 : 0; });
+    now.gaps.forEach((g, i) => {
+      const t = $('gt' + i);
+      t.style.left = (32 + (g.s + g.e) / 2 * KB) + 'px';
+      t.style.opacity = st.pre >= 2 && size(g) > 0 ? 1 : 0;
+      t.style.transitionDelay = anim && st.pre === 2 && st._prevPre < 2 ? (i * 0.3) + 's' : '0s';
+      const f = $('gf' + i); f.style.left = g.s * KB + 'px'; f.style.width = size(g) * KB + 'px';
+    });
+
+    /* Freiliste */
+    GAPS0.forEach((g, i) => {
+      const c = $('lc' + i);
+      c.classList.toggle('hide', st.pre < 2);
+      c.style.transitionDelay = anim && st.pre === 2 && st._prevPre < 2 ? (0.4 + i * 0.3) + 's' : '0s';
+      if (i < 3) { const a = $('ar' + i); a.style.opacity = st.pre >= 2 ? 1 : 0; a.style.transitionDelay = c.style.transitionDelay; }
+    });
+    if (placing) { const b = now.blocks[st.n - 1]; later(1050, () => writeList(now.gaps, b.gi)); }
+    else writeList(now.gaps, -1);
+
+    /* Suche: Bewertung der Lücken nacheinander */
+    const r = st.q === 'x' ? EXTRA : st.q != null ? REQ[st.q] : null;
+    const ch = r != null ? choose(kind, now.gaps, r) : { idx: -1, evals: [] };
+    const step = 0.55;
+    GAPS0.forEach((g, i) => {
+      const e = $('ev' + i), k = ch.evals.findIndex(v => v.i === i);
+      if (k < 0) { e.className = 'ev'; e.style.transitionDelay = '0s'; return; }
+      const ok = ch.evals[k].ok, sz = size(now.gaps[i]);
+      e.innerHTML = (ok ? CHECK : CROSS) + sz + (ok ? ' ≥ ' : ' < ') + r + '<span>' + (ok ? 'passt' : 'zu klein') + '</span>';
+      e.className = 'ev on ' + (ok ? 'yes' : 'no');
+      e.style.transitionDelay = (k * step) + 's';
+    });
+    const pickDelay = (ch.evals.length * step + 0.2) + 's';
+    GAPS0.forEach((g, i) => {
+      const on = r != null && i === ch.idx;
+      $('lc' + i).classList.toggle('pick', on); $('lc' + i).style.transitionDelay = on ? pickDelay : $('lc' + i).style.transitionDelay;
+      $('gt' + i).classList.toggle('pick', on);
+      $('gf' + i).classList.toggle('on', on);
+      if (on) $('gt' + i).style.transitionDelay = pickDelay;
+      $('gf' + i).style.transitionDelay = on ? pickDelay : '0s';
+    });
+    const nofit = r != null && ch.idx < 0;
+    $('nofit').classList.toggle('on', nofit); $('nofit').style.transitionDelay = nofit ? pickDelay : '0s';
+
+    /* Anfragen: in der Schlange oder im Riegel */
+    REQ.forEach((rq, i) => {
+      const el = $('rq' + i);
+      const placed = i < st.n;
+      let x, y, w, h;
+      if (placed) { const b = now.blocks[i]; x = 10 + 30 + 2 + b.s * KB; y = 60 + 40 + 2; w = rq * KB; h = 80; }
+      else { x = SLOTX(i); y = 6; w = 78; h = 42; }
+      Object.assign(el.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
+      el.classList.toggle('in', placed);
+      el.classList.toggle('now', st.q === i);
+      el.classList.toggle('hide', st.pre < 3);
+      el.style.transitionDelay = anim && st.pre === 3 && st._prevPre < 3 ? (i * 0.18) + 's' : '0s';
+      slotEls[i].style.opacity = st.pre >= 3 ? 1 : 0;
+    });
+    const x = $('rqx');
+    Object.assign(x.style, { left: '552px', top: '6px', width: '86px', height: '42px' });
+    x.classList.toggle('hide', !st.x); x.classList.toggle('now', st.q === 'x');
+    $('qlab').style.opacity = st.pre >= 3 ? 1 : 0;
+
+    /* Regel und Bilanz */
+    $('rule').style.opacity = st.kind ? 1 : 0;
+    $('rulet').textContent = st.kind ? RULE[st.kind] : ''; $('rulek').textContent = st.kind ? NAME[st.kind] : '';
+    const free = now.gaps.reduce((t, g) => t + size(g), 0), big = Math.max(...now.gaps.map(size));
+    $('info').innerHTML = 'Frei: <b>' + free + ' KiB</b> · größte Lücke: <b>' + big + ' KiB</b>';
+    $('info').classList.toggle('on', !!st.sum);
+
+    if (instant) { void stage.offsetWidth; stage.classList.remove('noanim'); }
+  }
+
+  /* ---------- Szenen ---------- */
+  function strategyBeats(kind) {
+    const B = [];
+    const intro = {
+      worst: 'Worst Fit nimmt immer die <b>größte</b> Lücke. Die Idee: Was übrig bleibt, ist dann noch groß genug für spätere Anfragen. Dafür muss es <b>alle</b> Lücken anschauen.',
+      best: 'Best Fit nimmt die <b>kleinste Lücke, die gerade noch passt</b>. Die Idee: Große Lücken bleiben für große Anfragen frei. Auch Best Fit muss <b>alle</b> Lücken anschauen.',
+      first: 'First Fit geht die Liste <b>von vorne</b> durch und nimmt die <b>erste</b> Lücke, die groß genug ist. Danach sucht es nicht weiter.'
+    }[kind];
+    B.push({ say: intro });
+    for (let q = 0; q < REQ.length; q++) {
+      const r = REQ[q], s = sim(kind, q), c = choose(kind, s.gaps, r), g = s.gaps[c.idx];
+      const nm = i => s.gaps[i].n;
+      let say;
+      if (kind === 'first') {
+        const no = c.evals.filter(e => !e.ok).map(e => nm(e.i));
+        say = '<b>' + r + ' KiB.</b> Von vorne: ' + (no.length ? no.join(', ') + (no.length > 1 ? ' sind' : ' ist') + ' zu klein. ' : '') + nm(c.idx) + ' hat ' + size(g) + ' KiB und passt. Fertig, <b>' + nm(c.idx) + '</b>.';
+      } else {
+        const fit = c.evals.filter(e => e.ok).map(e => e.i), no = c.evals.filter(e => !e.ok).map(e => nm(e.i));
+        const ties = fit.filter(i => size(s.gaps[i]) === size(g));
+        say = '<b>' + r + ' KiB.</b> Alle Lücken prüfen' + (no.length ? ' (' + no.join(', ') + ' zu klein)' : '') + '. Die ' + (kind === 'best' ? 'kleinste' : 'größte') + ' passende hat ' + size(g) + ' KiB' +
+          (ties.length > 1 ? ': ' + ties.map(nm).join(' und ') + ' sind gleich groß, also die vordere, <b>' + nm(c.idx) + '</b>.' : ': <b>' + nm(c.idx) + '</b>.');
+      }
+      B.push({ say, set: { q }, title: 'Anfrage ' + (q + 1) + ' von 5: ' + r + ' KiB' });
+      const rest = size(g) - r;
+      B.push({ say: 'Der Block kommt an den <b>Anfang</b> von ' + nm(c.idx) + ', Adresse ' + g.s + ' bis ' + (g.s + r) + ' KiB. ' + (rest ? 'Von ' + nm(c.idx) + ' bleiben <b>' + rest + ' KiB</b> frei.' : nm(c.idx) + ' ist jetzt <b>ganz voll</b> und fliegt aus der Liste.'),
+        set: { q: null, n: q + 1 }, title: 'Anfrage ' + (q + 1) + ' von 5: ' + r + ' KiB', ms: 2300 });
+    }
+    const end = sim(kind, 5), free = end.gaps.reduce((t, g) => t + size(g), 0), big = Math.max(...end.gaps.map(size));
+    B.push({ say: 'Alle fünf Anfragen passen. Frei sind noch <b>' + free + ' KiB</b>, die größte Lücke hat <b>' + big + ' KiB</b> am Stück.', set: { sum: 1 }, title: NAME[kind] + ': Bilanz' });
+    return B;
+  }
+
+  const S = [
+    { dot: '1', act: 'Aufgabe 3 · Ausgangslage', title: 'Freie Lücken im Arbeitsspeicher', st0: { mode: 'ram', kind: null, pre: 0, n: 0, q: null, x: 0, sum: 0 }, beats: [
+      { say: 'Das ist ein RAM-Riegel. Wir schauen uns <b>64 KiB</b> davon an (1 KiB = 1024 Byte). Ein Kasten sind 4 KiB, ein gestrichelter Strich 1 KiB. Die Zahlen darunter sind Adressen in KiB.' },
+      { say: '<b>Rot</b> ist schon belegt, zum Beispiel von anderen Programmen. Was weiß bleibt, ist frei. Diese freien Stücke heißen <b>Lücken</b>.', set: { pre: 1 } },
+      { say: 'Das Betriebssystem merkt sich alle Lücken in einer Liste, der <b>Freiliste</b>. Für jede Lücke steht dort, wo sie anfängt und wie groß sie ist.', set: { pre: 2 } },
+      { say: 'Jetzt kommen nacheinander fünf Anfragen, zum Beispiel durch <code>malloc()</code>. Jede braucht ein <b>zusammenhängendes</b> Stück. Man darf sie nicht auf zwei Lücken verteilen.', set: { pre: 3 } },
+      { say: 'Welche Lücke bekommt eine Anfrage? Die Regel dafür heißt <b>Allokationsstrategie</b>. Zwei Spielregeln für heute: Der Block kommt an den <b>Anfang</b> der Lücke. Sind zwei Lücken gleich gut, gewinnt die <b>vordere</b>.' }
+    ] },
+    { dot: 'a', act: 'Aufgabe 3 a)', title: 'a) Worst Fit', st0: { mode: 'ram', kind: 'worst', pre: 3, n: 0, q: null, x: 0, sum: 0 }, beats: strategyBeats('worst') },
+    { dot: 'b', act: 'Aufgabe 3 b)', title: 'b) Best Fit', st0: { mode: 'ram', kind: 'best', pre: 3, n: 0, q: null, x: 0, sum: 0 }, beats: strategyBeats('best') },
+    { dot: 'c', act: 'Aufgabe 3 c)', title: 'c) First Fit', st0: { mode: 'ram', kind: 'first', pre: 3, n: 0, q: null, x: 0, sum: 0 }, beats: strategyBeats('first') },
+    { dot: 'd', act: 'Aufgabe 3 d)', title: 'd) Drei Strategien im Vergleich', st0: { mode: 'cmp', c: 0, p: 0 }, beats: [
+      { say: 'Gleiche Anfragen, drei Strategien. So sieht der Speicher am Ende jeweils aus, genau wie in der Musterlösung.', set: { c: 1 } },
+      { say: 'In allen drei Fällen sind noch 14 KiB frei. Der Unterschied ist, <b>wie</b> der freie Platz verteilt ist.', set: { c: 2 } },
+      { say: 'Die Vor- und Nachteile aus der Musterlösung. Keine Strategie ist immer die beste. Welche gut ist, hängt davon ab, welche Anfragen später kommen.', set: { mode: 'pro', p: 1 }, ms: 2000 },
+      { say: 'Wichtig für Best und Worst Fit: „Alle Lücken durchsuchen“ gilt für eine unsortierte Liste wie hier. Hält man die Liste nach Größe sortiert, geht die Suche schneller. Dafür kostet dann das Einfügen in die Liste Zeit.' }
+    ] }
+  ];
+
+  function expand(sc) {
+    const steps = []; let st = { ...sc.st0, _prevPre: sc.st0.pre, _prevN: sc.st0.n };
+    sc.beats.forEach(b => {
+      const t = b.title || sc.title;
+      if (b.set) {
+        steps.push({ say: b.say, title: t, st: { ...st } });
+        const nx = { ...st, ...b.set, _prevPre: st.pre, _prevN: st.n };
+        steps.push({ say: b.say, title: t, st: nx, play: true, ms: b.ms });
+        st = { ...nx, _prevPre: nx.pre, _prevN: nx.n };
+      } else steps.push({ say: b.say, title: t, st: { ...st } });
+    });
+    return steps;
+  }
+
+  /* ---------- Schritt-Engine (wie KGÜ 5) ---------- */
+  let cur = 0, k = 0, steps = [], scene = null;
+  const dots = $('dots');
+  S.forEach((s, i) => { const d = document.createElement('button'); d.className = 'dot'; d.textContent = s.dot; d.title = s.title; d.onclick = () => show(i); dots.appendChild(d); });
+  const endPlay = () => { busy = false; ui(); };
+  function finish() { stop(); busy = false; shown = null; draw(target, false); ui(); }
+  function play(st, ms) { busy = true; target = st; ui(); draw(st, true); later(ms || 1800, endPlay); }
+  function ui() {
+    const nx = steps[k + 1];
+    $('next').textContent = busy ? 'läuft …' : nx && nx.play ? 'Zeigen →' : 'Weiter →';
+    $('next').classList.toggle('play', !busy && !!(nx && nx.play));
+    $('next').disabled = !busy && !nx && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && k === 0;
+    $('cnt').textContent = 'Schritt ' + (k + 1) + ' / ' + steps.length;
+    $('again').disabled = !busy && lastPlay() < 0;
+  }
+  function go(j, anim) {
+    const s = steps[j]; k = j;
+    $('say').innerHTML = s.say; $('ttl').textContent = s.title;
+    stop(); busy = false; target = s.st;
+    if (anim && s.play) play(s.st, s.ms); else { shown = null; draw(s.st, false); }
+    ui();
+  }
+  function show(i, last) {
+    stop(); busy = false; cur = i; scene = S[i]; steps = expand(scene);
+    $('act').textContent = scene.act;
+    [...dots.children].forEach((d, n) => { if (n === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    k = 0; go(last ? steps.length - 1 : 0, false);
+  }
+  function lastPlay() { for (let j = k; j >= 0; j--) if (steps[j].play) return j; return -1; }
+  function again() {
+    const j = lastPlay(); if (j < 0) return;
+    stop(); busy = false;
+    const before = j > 0 ? steps[j - 1].st : scene.st0;
+    shown = null; draw(before, false);
+    void stage.offsetWidth;
+    play(steps[j].st, steps[j].ms);
+  }
+  function next() {
+    if (busy) return finish();
+    if (k < steps.length - 1) go(k + 1, true); else if (cur < S.length - 1) show(cur + 1);
+  }
+  function prev() {
+    if (busy) finish();
+    if (k > 0) go(k - 1, false); else if (cur > 0) show(cur - 1, true);
+  }
+  $('again').onclick = again; $('next').onclick = next; $('prev').onclick = prev; $('replay').onclick = () => show(cur);
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'w' || e.key === 'W') again();
+    else if (e.key === 'r' || e.key === 'R') show(cur);
+  });
+
+  function fit() {
+    const w = box.clientWidth, s = Math.max(0.5, Math.min(w / 1000, (window.innerHeight - 250) / 380, 1.6));
+    stage.style.transform = 'scale(' + s + ')'; stage.style.left = (w - 1000 * s) / 2 + 'px'; box.style.height = 380 * s + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.__go = (i, j) => { show(i); if (j) go(Math.min(j, steps.length - 1), false); };
+  window.__sim = sim;
+  fit(); show(0);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGÜ 5 · Aufgabe 1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Gleicher Stil wie der Scheduling-Film: bewusst nur hell (Beamer).
+   Oben die Bühne (Tabelle, Warteschlange, CPU, Zeitdiagramm), darunter der Text.
+   Regel: erst Text, Animation erst nach Klick. Keine Emoji. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f1f2f5;
+  --warn: #c2410c; --hl: #fff1a8; --ptr: #ffd400; --cand: #2f5fb8;
+  --pA: #2f5fb8; --pB: #c2410c; --pC: #4d7c0f;
+  --chip: #2b303b; --chip2: #3a4050;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 10px 16px 10px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 24px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.top .act { color: var(--fg); }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--cand); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 0 0; }
+.stage.noanim, .stage.noanim * { transition: none !important; }
+.lab { position: absolute; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; white-space: nowrap; }
+#main, #cmp { position: absolute; inset: 0; transition: opacity 0.4s; }
+.offp { opacity: 0; pointer-events: none; }
+
+/* Aufgabentabelle */
+.tab { position: absolute; left: 14px; top: 30px; display: grid; grid-template-columns: 58px 62px 56px 72px; border: 1.5px solid var(--fg); border-radius: 8px; overflow: hidden; background: #fff; }
+.tab > div { height: 30px; line-height: 30px; text-align: center; font-family: var(--font-mono); font-size: 17px; font-weight: 600; transition: background 0.35s; }
+.tab > .h { height: 24px; line-height: 24px; font-family: var(--font-body); font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; color: var(--muted); background: var(--soft); }
+.tab .pl { display: grid; place-items: center; }
+.tab .pl i { width: 26px; height: 26px; border-radius: 6px; color: #fff; font-style: normal; font-family: var(--font-body); font-size: 15px; line-height: 26px; }
+.hl-ank .c-ank, .hl-dau .c-dau, .hl-prio .c-prio { background: var(--hl); }
+.hl-ank .h.c-ank, .hl-dau .h.c-dau, .hl-prio .h.c-prio { color: var(--fg); }
+
+/* Uhr, Regel */
+#clock { position: absolute; left: 282px; top: 2px; font-size: 15px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+#clock b { font-family: var(--font-mono); font-size: 24px; color: var(--fg); margin-left: 6px; display: inline-block; min-width: 32px; }
+#rule { position: absolute; right: 14px; top: 4px; font-size: 14.5px; font-weight: 600; background: var(--hl); border: 1.5px solid var(--fg); border-radius: 999px; padding: 2px 12px; white-space: nowrap; transition: opacity 0.3s; }
+#rule:empty { opacity: 0; }
+
+/* Warteschlange, CPU, Fertig */
+.lane { position: absolute; top: 54px; height: 92px; border: 2px dashed var(--line); border-radius: 12px; background: var(--soft); }
+#lq { left: 282px; width: 220px; }
+#ld { left: 716px; width: 270px; }
+.arrow { position: absolute; top: 92px; width: 40px; height: 16px; }
+#cpu { position: absolute; left: 542px; top: 32px; width: 124px; height: 124px; }
+#cpuname { position: absolute; left: 552px; top: 44px; width: 104px; text-align: center; font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; color: #aeb5c4; }
+#slice { position: absolute; left: 552px; top: 124px; width: 104px; text-align: center; font-size: 12px; font-weight: 600; color: #fff; transition: opacity 0.3s; white-space: nowrap; }
+#slice i { display: inline-block; width: 13px; height: 8px; border-radius: 2px; border: 1.5px solid #fff; margin-left: 3px; vertical-align: 0; transition: background 0.3s; }
+#slice i.on { background: var(--ptr); border-color: var(--ptr); }
+
+/* Prozess-Marken */
+.tk { position: absolute; width: 58px; height: 58px; border-radius: 12px; color: #fff; z-index: 5; transform-origin: 0 0;
+  transition: left 0.7s cubic-bezier(0.5, 0, 0.2, 1), top 0.7s cubic-bezier(0.5, 0, 0.2, 1), transform 0.7s cubic-bezier(0.5, 0, 0.2, 1), box-shadow 0.3s, opacity 0.25s;
+  box-shadow: 0 3px 8px rgba(20, 25, 40, 0.28); text-align: center; }
+.tk b { display: block; font-size: 27px; line-height: 38px; }
+.tk .sub { display: block; font-size: 12px; font-weight: 600; line-height: 14px; margin-top: -2px; transition: opacity 0.3s; white-space: nowrap; }
+.tk .tag { position: absolute; left: 50%; top: 61px; transform: translateX(-50%); font-size: 11.5px; font-weight: 600; line-height: 15px; white-space: nowrap; background: #fff; color: var(--fg); border: 1.5px solid var(--fg); border-radius: 999px; padding: 0 6px; transition: opacity 0.3s; }
+.tk .tag:empty { display: none; }
+.tk.home { transform: scale(0.45); box-shadow: none; opacity: 0; }
+.tk.home .sub, .tk.home .tag, .tk.fin .tag { opacity: 0; }
+.tk.run { box-shadow: 0 0 0 4px var(--ptr), 0 3px 8px rgba(20, 25, 40, 0.28); }
+
+/* Zeitdiagramm */
+.zn { position: absolute; top: 160px; width: 56px; text-align: center; font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--muted); line-height: 22px; }
+.zn.now { color: var(--fg); }
+.rl { position: absolute; left: 16px; width: 36px; height: 36px; border-radius: 8px; color: #fff; font-weight: 600; font-size: 19px; line-height: 36px; text-align: center; }
+.cell { position: absolute; width: 56px; height: 40px; border: 1px solid var(--line); background: #fff; overflow: hidden; transition: background 0.4s; }
+.cell.na { background: var(--soft); }
+.cell .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--c); transition: width 0.5s linear; }
+.cell.f .fill { width: 100%; }
+.cell .hat { position: absolute; inset: 0; opacity: 0; transition: opacity 0.4s;
+  background: repeating-linear-gradient(135deg, var(--c) 0 3px, transparent 3px 9px); }
+.cell.h .hat { opacity: 0.5; }
+.cell.cnt { box-shadow: inset 0 0 0 3px var(--fg); }
+.cell.cnt .hat { opacity: 0.8; }
+.arrm { position: absolute; width: 5px; height: 0; background: var(--fg); z-index: 3; transition: height 0.5s; }
+.arrm.on { height: 40px; }
+.arrm::before { content: ""; position: absolute; left: 5px; top: 0; border: 7px solid transparent; border-left-color: var(--fg); border-top-color: var(--fg); border-right-width: 0; border-bottom-width: 7px; opacity: 0; transition: opacity 0.4s 0.3s; }
+.arrm.on::before { opacity: 1; }
+#col { position: absolute; top: 158px; width: 58px; height: 162px; border: 3px solid var(--fg); border-radius: 7px; z-index: 4; transition: left 0.35s, opacity 0.3s; pointer-events: none; }
+.num { position: absolute; width: 100px; height: 40px; line-height: 40px; text-align: center; font-family: var(--font-mono); font-size: 25px; font-weight: 600; }
+.avg { position: absolute; top: 318px; width: 100px; text-align: center; font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--muted); transition: opacity 0.4s; }
+.span { position: absolute; height: 5px; width: 0; background: var(--fg); border-radius: 3px; z-index: 3; transition: width 0.8s cubic-bezier(0.5, 0, 0.2, 1); }
+.kwm { position: absolute; top: 172px; width: 4px; height: 0; margin-left: -2px; background: var(--fg); z-index: 6; transition: height 0.5s; }
+.kwm b { position: absolute; left: -9px; top: -12px; width: 22px; height: 22px; border-radius: 50%; background: var(--ptr); border: 2px solid var(--fg); font-family: var(--font-mono); font-size: 12.5px; line-height: 18px; text-align: center; transform: scale(0); transition: transform 0.3s; }
+.kwm.on { height: 148px; }
+.kwm.on b { transform: scale(1); }
+#win { position: absolute; left: 59px; top: 156px; height: 166px; width: 0; border: 3px solid var(--warn); border-radius: 8px; background: rgba(194, 65, 12, 0.08); z-index: 2; opacity: 0; overflow: hidden; transition: width 1s cubic-bezier(0.5, 0, 0.2, 1), opacity 0.3s; }
+#win.on { width: 454px; opacity: 1; }
+.okm { position: absolute; width: 24px; height: 24px; border-radius: 50%; background: #fff; border: 2.5px solid var(--fg); z-index: 7; transform: scale(0); transition: transform 0.35s; }
+.okm svg { position: absolute; inset: 0; }
+.okm.on { transform: scale(1); }
+.res { position: absolute; top: 334px; font-size: 18px; white-space: nowrap; transition: opacity 0.4s; }
+.res b { font-family: var(--font-mono); font-size: 21px; margin-left: 4px; }
+#res-kw { left: 62px; }
+#res-d { left: 330px; }
+#legend { position: absolute; left: 62px; top: 334px; display: flex; gap: 26px; font-size: 16px; transition: opacity 0.4s; }
+#legend span { display: flex; align-items: center; gap: 8px; }
+#legend i { display: inline-block; width: 44px; height: 24px; border: 1px solid var(--line); --c: var(--pA); }
+#legend i.a { background: var(--c); }
+#legend i.b { background: repeating-linear-gradient(135deg, rgba(47, 95, 184, 0.5) 0 3px, transparent 3px 9px); }
+.hid { opacity: 0; }
+
+/* Vergleich */
+.ch { position: absolute; top: 20px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; color: var(--muted); text-align: center; line-height: 1.25; }
+.crow { position: absolute; left: 14px; width: 972px; height: 66px; border-top: 1.5px solid var(--line); opacity: 0; transform: translateY(14px); transition: opacity 0.5s, transform 0.5s; }
+.crow.on { opacity: 1; transform: none; }
+.crow .nm { position: absolute; left: 0; top: 0; width: 196px; height: 66px; display: flex; flex-direction: column; justify-content: center; font-weight: 600; font-size: 19px; line-height: 1.2; }
+.crow .nm small { font-weight: 400; font-size: 13.5px; color: var(--muted); }
+.crow .st { position: absolute; left: 200px; top: 17px; display: flex; }
+.crow .st i { width: 30px; height: 32px; color: #fff; font-style: normal; font-weight: 600; font-size: 15px; line-height: 32px; text-align: center; border-right: 1px solid #fff; opacity: 0; transition: opacity 0.3s; }
+.crow.on .st i { opacity: 1; }
+.crow .v { position: absolute; top: 12px; width: 96px; height: 42px; line-height: 42px; border-radius: 8px; text-align: center; font-family: var(--font-mono); font-size: 22px; font-weight: 600; transition: background 0.4s, box-shadow 0.4s, color 0.4s; }
+#cmp.c-kw .v.k-kw.best, #cmp.c-wv .v.k-w.best, #cmp.c-wv .v.k-v.best, #cmp.c-d .v.k-d.best { background: var(--hl); box-shadow: 0 0 0 2.5px var(--fg); }
+#cmp.c-kw .v.k-kw.worst, #cmp.c-wv .v.k-w.worst, #cmp.c-wv .v.k-v.worst, #cmp.c-d .v.k-d.worst { color: var(--warn); }
+#cmp.c-rr .crow.r-rr .nm { color: var(--cand); }
+#cmp.c-rr .crow.r-rr { background: #eef3fc; }
+
+/* Text und Bedienung */
+.cap { margin-top: 8px; min-height: 118px; }
+.cap h1 { font-size: 24px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.cap p { margin: 0; font-size: 21px; line-height: 1.35; max-width: 84ch; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot { width: 30px; height: 30px; padding: 0; border-radius: 50%; border-color: var(--line); font-family: var(--font-mono); font-size: 14px; }
+.dot[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#next { min-width: 170px; background: var(--fg); color: var(--bg); margin-left: auto; }
+#next.play { background: var(--ptr); color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="act" id="act"></span><span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+      <div id="main">
+        <div class="lab" style="left:14px;top:8px">Die Prozesse</div>
+        <div class="tab" id="tab">
+          <div class="h">Prozess</div><div class="h c-ank">Ankunft</div><div class="h c-dau">Dauer</div><div class="h c-prio">Priorität</div>
+          <div class="pl"><i style="background:var(--pA)">A</i></div><div class="c-ank">1</div><div class="c-dau">5</div><div class="c-prio">3</div>
+          <div class="pl"><i style="background:var(--pB)">B</i></div><div class="c-ank">2</div><div class="c-dau">4</div><div class="c-prio">1</div>
+          <div class="pl"><i style="background:var(--pC)">C</i></div><div class="c-ank">4</div><div class="c-dau">2</div><div class="c-prio">2</div>
+        </div>
+
+        <div id="clock">Zeiteinheit<b id="clk">–</b></div>
+        <div id="rule"></div>
+
+        <div class="lab" style="left:282px;top:34px">Warteschlange</div>
+        <div class="lab" style="left:452px;top:34px">vorne</div>
+        <div class="lane" id="lq"></div>
+        <svg class="arrow" style="left:504px" viewBox="0 0 40 16"><path d="M2 8h30M26 2l8 6-8 6" fill="none" stroke="#16181d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg id="cpu" viewBox="0 0 124 124">
+          <g fill="#8a909c">
+            <rect x="24" y="0" width="7" height="12" rx="2"/><rect x="42" y="0" width="7" height="12" rx="2"/><rect x="60" y="0" width="7" height="12" rx="2"/><rect x="78" y="0" width="7" height="12" rx="2"/><rect x="96" y="0" width="7" height="12" rx="2"/>
+            <rect x="24" y="112" width="7" height="12" rx="2"/><rect x="42" y="112" width="7" height="12" rx="2"/><rect x="60" y="112" width="7" height="12" rx="2"/><rect x="78" y="112" width="7" height="12" rx="2"/><rect x="96" y="112" width="7" height="12" rx="2"/>
+            <rect x="0" y="24" width="12" height="7" rx="2"/><rect x="0" y="42" width="12" height="7" rx="2"/><rect x="0" y="60" width="12" height="7" rx="2"/><rect x="0" y="78" width="12" height="7" rx="2"/><rect x="0" y="96" width="12" height="7" rx="2"/>
+            <rect x="112" y="24" width="12" height="7" rx="2"/><rect x="112" y="42" width="12" height="7" rx="2"/><rect x="112" y="60" width="12" height="7" rx="2"/><rect x="112" y="78" width="12" height="7" rx="2"/><rect x="112" y="96" width="12" height="7" rx="2"/>
+          </g>
+          <rect x="10" y="10" width="104" height="104" rx="12" fill="#2b303b" stroke="#16181d" stroke-width="2.5"/>
+          <rect x="17" y="17" width="90" height="90" rx="8" fill="none" stroke="#4a5163" stroke-width="1.5"/>
+          <circle cx="24" cy="24" r="3" fill="#4a5163"/>
+        </svg>
+        <div id="cpuname">CPU</div>
+        <div id="slice">Zeitscheibe<i></i><i></i></div>
+        <svg class="arrow" style="left:670px" viewBox="0 0 40 16"><path d="M2 8h30M26 2l8 6-8 6" fill="none" stroke="#16181d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="lab" style="left:716px;top:34px">Fertig</div>
+        <div class="lane" id="ld"></div>
+
+        <div class="lab" style="left:16px;top:164px">ZE</div>
+        <div class="lab" style="left:750px;top:164px;width:100px;text-align:center">Wartezeit</div>
+        <div class="lab" style="left:868px;top:164px;width:100px;text-align:center">Verweildauer</div>
+        <div id="grid"></div>
+        <div id="col"></div>
+        <div id="win"></div>
+        <div class="avg" id="w-avg" style="left:750px"></div>
+        <div class="avg" id="v-avg" style="left:868px"></div>
+        <div class="res" id="res-kw">Kontextwechsel:<b></b></div>
+        <div class="res" id="res-d">Durchsatz in den ersten 8 ZE:<b></b></div>
+        <div id="legend"><span><i class="a"></i>rechnet</span><span><i class="b"></i>ist da, wartet</span><span><i style="background:var(--soft)"></i>noch nicht da oder schon fertig</span></div>
+      </div>
+      <div id="cmp" class="offp"></div>
+    </div>
+  </div>
+  <div class="cap"><h1 id="ttl"></h1><p id="say"></p></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Zurück">←</button>
+    <span id="dots" style="display:flex;gap:6px"></span>
+    <button id="replay" aria-label="Teil neu starten" title="Teil neu starten (R)">↺</button>
+    <button id="next">Weiter →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), box = $('box'), main = $('main'), cmp = $('cmp'), grid = $('grid');
+  const N = ['A', 'B', 'C'];
+  const P = { A: { arr: 1, dur: 5, prio: 3 }, B: { arr: 2, dur: 4, prio: 1 }, C: { arr: 4, dur: 2, prio: 2 } };
+  const X0 = 62, CW = 56, ROW = { A: 186, B: 230, C: 274 }, TMAX = 12, WIN = 8;
+  const cx = t => X0 + (t - 1) * CW;
+  const de = (x, d) => x.toFixed(d).replace('.', ',');
+
+  /* ---------- Simulation: liefert für jede Regel alle Zwischenstände ---------- */
+  function simulate(rule) {
+    const rest = { A: 5, B: 4, C: 2 }, run = [], kw = [], fin = {}, snaps = [];
+    let q = [], cpu = null, done = [], used = 0, last = null;
+    const order = () => {
+      if (rule === 'prio') q.sort((a, b) => P[a].prio - P[b].prio);
+      if (rule === 'sjf') q.sort((a, b) => P[a].dur - P[b].dur);
+    };
+    const snap = (t, ph, filled) => snaps.push({ t, ph, filled, cpu, q: [...q], done: [...done], rest: { ...rest }, used });
+    snap(0, 'init', 0);
+    for (let t = 1; done.length < 3 && t < 40; t++) {
+      const come = N.filter(n => P[n].arr === t);
+      if (come.length) { q.push(...come); order(); snap(t, 'arr', t - 1); }
+      if (cpu) {
+        const rrOut = rule === 'rr' && used >= 2 && q.length;
+        const prOut = rule === 'prio' && q.length && P[q[0]].prio < P[cpu].prio;
+        if (rrOut || prOut) { q.push(cpu); cpu = null; order(); snap(t, 'out', t - 1); }
+        else if (rule === 'rr' && used >= 2) used = 0;
+      }
+      if (!cpu && q.length) { cpu = q.shift(); used = 0; if (last && last !== cpu) kw.push(t); snap(t, 'disp', t - 1); }
+      if (!cpu) continue;
+      rest[cpu]--; used++; run[t] = cpu; last = cpu;
+      snap(t, 'run', t);
+      if (rest[cpu] === 0) { fin[cpu] = t; done.push(cpu); cpu = null; snap(t, 'fin', t); }
+    }
+    const W = {}, V = {};
+    N.forEach(n => { V[n] = fin[n] - P[n].arr + 1; W[n] = V[n] - P[n].dur; });
+    const inWin = N.filter(n => fin[n] <= WIN);
+    return { rule, snaps, run, kw, fin, W, V, inWin,
+      wAvg: (W.A + W.B + W.C) / 3, vAvg: (V.A + V.B + V.C) / 3, thr: inWin.length / WIN };
+  }
+  const SIM = { fcfs: simulate('fcfs'), prio: simulate('prio'), sjf: simulate('sjf'), rr: simulate('rr') };
+  const PH = ['init', 'arr', 'out', 'disp', 'run', 'fin'];
+  /* Index des letzten Zwischenstands bis einschließlich Zeiteinheit t (und Phase ph) */
+  function idx(sim, t, ph) {
+    const lim = PH.indexOf(ph || 'fin'); let r = 0;
+    sim.snaps.forEach((s, i) => { if (s.t < t || (s.t === t && PH.indexOf(s.ph) <= lim)) r = i; });
+    return r;
+  }
+
+  /* ---------- Bühne aufbauen ---------- */
+  const tk = {}, cell = {}, arrm = {}, num = { w: {}, v: {} }, span = {}, okm = {}, zn = [];
+  for (let t = 1; t <= TMAX; t++) {
+    const z = document.createElement('div'); z.className = 'zn'; z.style.left = cx(t) + 'px'; z.textContent = t; grid.appendChild(z); zn[t] = z;
+  }
+  N.forEach(n => {
+    const col = 'var(--p' + n + ')';
+    const rl = document.createElement('div'); rl.className = 'rl'; rl.style.top = ROW[n] + 2 + 'px'; rl.style.background = col; rl.textContent = n; grid.appendChild(rl);
+    cell[n] = [];
+    for (let t = 1; t <= TMAX; t++) {
+      const c = document.createElement('div'); c.className = 'cell'; c.style.left = cx(t) + 'px'; c.style.top = ROW[n] + 'px'; c.style.setProperty('--c', col);
+      c.innerHTML = '<div class="hat"></div><div class="fill"></div>'; grid.appendChild(c); cell[n][t] = c;
+    }
+    const a = document.createElement('div'); a.className = 'arrm'; a.style.left = cx(P[n].arr) - 2 + 'px'; a.style.top = ROW[n] + 'px'; grid.appendChild(a); arrm[n] = a;
+    const s = document.createElement('div'); s.className = 'span'; s.style.left = cx(P[n].arr) + 'px'; s.style.top = ROW[n] + 39 + 'px'; grid.appendChild(s); span[n] = s;
+    const o = document.createElement('div'); o.className = 'okm';
+    o.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 12.5l4 4 8-9" fill="none" stroke="#16181d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    o.style.top = ROW[n] - 8 + 'px'; grid.appendChild(o); okm[n] = o;
+    ['w', 'v'].forEach((k, i) => {
+      const d = document.createElement('div'); d.className = 'num'; d.style.left = (i ? 868 : 750) + 'px'; d.style.top = ROW[n] + 'px'; grid.appendChild(d); num[k][n] = d;
+    });
+    const e = document.createElement('div'); e.className = 'tk home'; e.style.background = col;
+    e.innerHTML = '<b>' + n + '</b><span class="sub"></span><span class="tag"></span>'; main.appendChild(e); tk[n] = e;
+  });
+  const kwEl = [];
+  for (let i = 0; i < 6; i++) { const k = document.createElement('div'); k.className = 'kwm'; k.innerHTML = '<b>' + (i + 1) + '</b>'; grid.appendChild(k); kwEl.push(k); }
+
+  /* Vergleichstafel */
+  const RN = { fcfs: ['a) FCFS', 'wer zuerst kam'], prio: ['b) Priority', 'höchste Priorität, präemptiv'], sjf: ['c) SJF', 'kürzeste Dauer'], rr: ['d) Round Robin', 'Zeitscheibe 2 ZE'] };
+  (() => {
+    const cols = [['k-w', 'Ø Warte&shy;zeit', 'wAvg', 1], ['k-v', 'Ø Verweil&shy;dauer', 'vAvg', 1], ['k-kw', 'Kontext&shy;wechsel', 'kwN', 1], ['k-d', 'Durchsatz<br>in 8 ZE', 'thr', -1]];
+    let h = '<div class="ch" style="left:214px;width:330px;text-align:left">Wer rechnet in Zeiteinheit 1 bis 11</div>';
+    cols.forEach((c, i) => { h += '<div class="ch" style="left:' + (574 + i * 104) + 'px;width:96px">' + c[1] + '</div>'; });
+    const val = (r, key) => key === 'kwN' ? SIM[r].kw.length : SIM[r][key];
+    Object.keys(RN).forEach((r, ri) => {
+      h += '<div class="crow r-' + r + '" style="top:' + (62 + ri * 70) + 'px;transition-delay:' + ri * 0.35 + 's"><div class="nm">' + RN[r][0] + '<small>' + RN[r][1] + '</small></div><div class="st">';
+      for (let t = 1; t <= 11; t++) h += '<i style="background:var(--p' + SIM[r].run[t] + ');transition-delay:' + (ri * 0.35 + 0.3 + t * 0.07) + 's">' + SIM[r].run[t] + '</i>';
+      h += '</div>';
+      cols.forEach((c, i) => {
+        const all = Object.keys(RN).map(x => val(x, c[2]) * c[3]), v = val(r, c[2]) * c[3];
+        const cls = Math.abs(v - Math.min(...all)) < 1e-9 ? ' best' : Math.abs(v - Math.max(...all)) < 1e-9 ? ' worst' : '';
+        const txt = c[2] === 'kwN' ? val(r, c[2]) : c[2] === 'thr' ? de(val(r, c[2]), 3).replace(/0$/, '') : de(val(r, c[2]), 2);
+        h += '<div class="v ' + c[0] + cls + '" style="left:' + (560 + i * 104) + 'px">' + txt + '</div>';
+      });
+      h += '</div>';
+    });
+    cmp.innerHTML = h;
+  })();
+
+  /* ---------- Zeichnen eines Zustands ---------- */
+  const TAG = { fcfs: n => 'kam ZE ' + P[n].arr, prio: n => 'Prio ' + P[n].prio, sjf: n => 'Dauer ' + P[n].dur, rr: () => '' };
+  const HOME = { A: 57.5, B: 87.5, C: 117.5 };
+  let sim = SIM.fcfs, scene = null;
+
+  function drawSnap(sn) {
+    N.forEach(n => {
+      const e = tk[n], qi = sn.q.indexOf(n), di = sn.done.indexOf(n);
+      let x, y = 60, c = 'tk';
+      if (sn.cpu === n) { x = 575; c += sn.ph === 'run' || sn.ph === 'disp' ? ' run' : ''; }
+      else if (qi >= 0) x = 434 - 68 * qi;
+      else if (di >= 0) { x = 728 + 68 * di; c += ' fin'; }
+      else { x = 31.5; y = HOME[n]; c += ' home'; }
+      e.className = c; e.style.left = x + 'px'; e.style.top = y + 'px';
+      e.children[1].textContent = di >= 0 ? 'fertig' : 'noch ' + sn.rest[n];
+      e.children[2].textContent = scene.rule ? TAG[sim.rule](n) : '';
+      for (let t = 1; t <= TMAX; t++) {
+        const on = t <= sn.filled, mine = sim.run[t] === n, there = t >= P[n].arr && t <= sim.fin[n];
+        cell[n][t].classList.toggle('f', on && mine);
+        cell[n][t].classList.toggle('h', on && !mine && there);
+      }
+    });
+    $('clk').textContent = sn.t || '–';
+    const rr = scene.rule === 'rr';
+    $('slice').style.opacity = rr && sn.cpu ? 1 : 0;
+    [...$('slice').children].forEach((p, i) => p.classList.toggle('on', i < sn.used));
+    const end = sn.done.length === 3;
+    $('col').style.left = cx(sn.t || 1) - 1 + 'px';
+    $('col').style.opacity = sn.t && !end ? 1 : 0;
+    zn.forEach((z, t) => z.classList.toggle('now', t === sn.t && !end));
+  }
+
+  function drawM(m) {
+    N.forEach(n => {
+      for (let t = 1; t <= TMAX; t++) cell[n][t].classList.toggle('cnt', m === 1 && cell[n][t].classList.contains('h'));
+      num.w[n].textContent = m >= 1 ? sim.W[n] : '';
+      num.v[n].textContent = m >= 2 ? sim.V[n] : '';
+      span[n].style.width = m >= 2 ? sim.V[n] * CW + 'px' : '0';
+      okm[n].style.left = cx(sim.fin[n]) + CW - 16 + 'px';
+      okm[n].classList.toggle('on', m >= 4 && sim.fin[n] <= WIN);
+    });
+    $('w-avg').textContent = 'Ø ' + de(sim.wAvg, 2); $('w-avg').classList.toggle('hid', m < 1);
+    $('v-avg').textContent = 'Ø ' + de(sim.vAvg, 2); $('v-avg').classList.toggle('hid', m < 2);
+    kwEl.forEach((k, i) => { const t = sim.kw[i]; if (t) k.style.left = cx(t) + 'px'; k.classList.toggle('on', m >= 3 && !!t); });
+    $('res-kw').lastChild.textContent = sim.kw.length; $('res-kw').classList.toggle('hid', m < 3);
+    $('win').classList.toggle('on', m >= 4);
+    $('res-d').lastChild.textContent = sim.inWin.length + ' ÷ 8 = ' + de(sim.thr, 3).replace(/0$/, '');
+    $('res-d').classList.toggle('hid', m < 4);
+  }
+
+  function draw(st, instant) {
+    if (instant) stage.classList.add('noanim');
+    const isCmp = !!scene.cmp;
+    main.classList.toggle('offp', isCmp); cmp.classList.toggle('offp', !isCmp);
+    cmp.className = (isCmp ? '' : 'offp') + (st.c >= 2 ? ' c-kw' : '') + (st.c >= 3 ? ' c-wv' : '') + (st.c >= 4 ? ' c-d' : '') + (st.c >= 5 ? ' c-rr' : '');
+    [...cmp.querySelectorAll('.crow')].forEach(r => r.classList.toggle('on', st.c >= 1));
+    $('tab').className = 'tab' + (st.hl ? ' hl-' + st.hl : '');
+    N.forEach(n => {
+      arrm[n].classList.toggle('on', !!st.arr);
+      for (let t = 1; t <= TMAX; t++) cell[n][t].classList.toggle('na', !!st.arr && (t < P[n].arr || (st.i > 0 && t > sim.fin[n])));
+    });
+    $('legend').classList.toggle('hid', !st.lg);
+    $('rule').textContent = scene.chip || '';
+    drawSnap(sim.snaps[st.i]);
+    drawM(st.m);
+    if (instant) { void stage.offsetWidth; stage.classList.remove('noanim'); }
+  }
+
+  /* ---------- Abspielen ---------- */
+  let timers = [], busy = false, target = null;
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const stop = () => { timers.forEach(clearTimeout); timers = []; };
+  const endPlay = () => { busy = false; draw(target, false); ui(); };
+  function finish() { stop(); busy = false; draw(target, true); ui(); }
+  const DUR = { arr: 950, out: 950, disp: 950, run: 700, fin: 900 };
+
+  function play(from, to) {
+    busy = true; target = to; ui();
+    if (to.i > from.i) {
+      let i = from.i + 1;
+      const step = () => { draw({ ...to, i, m: 0 }, false); const d = DUR[sim.snaps[i].ph]; if (i >= to.i) later(d, endPlay); else { i++; later(d, step); } };
+      step();
+    } else if (to.m > from.m && to.m === 1) {
+      let at = 0;
+      N.forEach(n => {
+        const ts = []; for (let t = 1; t <= TMAX; t++) if (cell[n][t].classList.contains('h')) ts.push(t);
+        later(at, () => { num.w[n].textContent = 0; }); at += 350;
+        ts.forEach((t, k) => { later(at, () => { cell[n][t].classList.add('cnt'); num.w[n].textContent = k + 1; }); at += 300; });
+        at += 350;
+      });
+      later(at, endPlay);
+    } else if (to.m > from.m && to.m === 2) {
+      N.forEach((n, k) => {
+        later(k * 1100, () => { for (let t = 1; t <= TMAX; t++) cell[n][t].classList.remove('cnt'); span[n].style.width = sim.V[n] * CW + 'px'; });
+        later(k * 1100 + 800, () => { num.v[n].textContent = sim.V[n]; });
+      });
+      later(3500, endPlay);
+    } else if (to.m > from.m && to.m === 3) {
+      $('res-kw').lastChild.textContent = 0; $('res-kw').classList.remove('hid');
+      sim.kw.forEach((t, k) => later(400 + k * 800, () => { kwEl[k].style.left = cx(t) + 'px'; kwEl[k].classList.add('on'); $('res-kw').lastChild.textContent = k + 1; }));
+      later(400 + sim.kw.length * 800, endPlay);
+    } else if (to.m > from.m && to.m === 4) {
+      $('win').classList.add('on');
+      sim.inWin.forEach((n, k) => later(1200 + k * 600, () => okm[n].classList.add('on')));
+      later(1500 + sim.inWin.length * 600, endPlay);
+    } else {
+      draw(to, false); later(scene.cmp ? 2600 : 900, endPlay);
+    }
+  }
+
+  /* ---------- Die Teile ---------- */
+  const mBeats = (w, v, k, d) => [{ say: w, m: 1 }, { say: v, m: 2 }, { say: k, m: 3 }, { say: d, m: 4 }];
+  const S = [
+    { dot: '1', act: 'Aufgabe 1', title: 'Drei Prozesse, eine CPU', beats: [
+      { say: 'Drei Prozesse wollen rechnen, aber es gibt nur <b>eine CPU</b>. Wir probieren vier Regeln aus und messen jede.' },
+      { say: '<b>Ankunft</b> sagt, ab wann ein Prozess da ist. Ankunft 2 heißt: ab dem Anfang von Zeiteinheit 2.', hl: 'ank', arr: 1 },
+      { say: '<b>Dauer</b> sagt, wie viele Zeiteinheiten der Prozess die CPU braucht. A braucht 5, B braucht 4, C braucht 2.', hl: 'dau' },
+      { say: '<b>Priorität</b> zählt nur in Teil b). Achtung: <b>1 ist die höchste</b>. B ist also am wichtigsten, A am unwichtigsten.', hl: 'prio' },
+      { say: 'Unten entsteht das Zeitdiagramm. <b>Farbig</b> heißt: Der Prozess rechnet. <b>Schraffiert</b> heißt: Er ist da, muss aber warten.', hl: '', lg: 1 },
+      { say: 'Daraus lesen wir vier Messwerte ab: Wartezeit, Verweildauer, Kontextwechsel und Durchsatz. Ein Kontextwechsel kostet in dieser Aufgabe keine Zeit.' }
+    ] },
+    { dot: 'a', rule: 'fcfs', act: 'Aufgabe 1 a)', title: 'a) First Come, First Served', chip: 'Regel: Wer zuerst kam, rechnet zuerst', hl: 'ank', beats: [
+      { say: 'Die Regel: Wer <b>zuerst angekommen</b> ist, rechnet zuerst. Wer einmal rechnet, bleibt bis zu seinem Ende dran.' },
+      { say: 'Zeiteinheit 1: A kommt an. Die CPU ist frei, also rechnet A sofort.', to: 1 },
+      { say: 'Zeiteinheit 2: B kommt an. Die CPU ist besetzt, und unterbrochen wird nicht. B muss warten.', to: 3 },
+      { say: 'Zeiteinheit 4: C kommt an und stellt sich <b>hinter B</b>. Nach Zeiteinheit 5 ist A fertig.', to: 5 },
+      { say: 'Die CPU ist frei. B wartet am längsten, also ist B dran. Das ist der erste Kontextwechsel.', to: 9 },
+      { say: 'B ist fertig. Jetzt bleibt nur noch C. Nach Zeiteinheit 11 sind alle fertig.', to: 11 },
+      ...mBeats(
+        '<b>Wartezeit</b> <i>(englisch: waiting time)</i>: Wir zählen in jeder Zeile die schraffierten Kästchen. A wartet 0, B wartet 4, C wartet 6.',
+        '<b>Verweildauer</b> <i>(englisch: turnaround time)</i>: von der Ankunft bis zum Ende. A: 5, B: 8, C: 8. Kontrolle: Verweildauer = Wartezeit + Dauer.',
+        '<b>Kontextwechsel</b> <i>(englisch: context switch)</i>: Wo wechselt die CPU von einem Prozess zum nächsten? Von A zu B und von B zu C. Das sind 2.',
+        '<b>Durchsatz</b> <i>(englisch: throughput)</i> heißt: fertige Prozesse <b>pro Zeiteinheit</b>. In den ersten 8 Zeiteinheiten ist nur A fertig. Also 1 Prozess ÷ 8 Zeiteinheiten = 0,125.')
+    ] },
+    { dot: 'b', rule: 'prio', act: 'Aufgabe 1 b)', title: 'b) Priority Scheduling, präemptiv', chip: 'Regel: Höchste Priorität rechnet · 1 = höchste', hl: 'prio', beats: [
+      { say: 'Die Regel: Es rechnet immer der Prozess mit der <b>höchsten Priorität</b>. Nur hier darf ein Prozess <b>unterbrochen</b> werden.' },
+      { say: 'Zeiteinheit 1: Nur A ist da. A hat die niedrigste Priorität, rechnet aber trotzdem, weil sonst niemand da ist.', to: 1 },
+      { say: 'Zeiteinheit 2: B kommt an. B hat Priorität 1, A nur Priorität 3. Was passiert?', to: 2, ph: 'arr' },
+      { say: 'B ist wichtiger. A wird <b>verdrängt</b> und muss zurück in die Warteschlange. Das ist der erste Kontextwechsel.', to: 3 },
+      { say: 'Zeiteinheit 4: C kommt an. C hat Priorität 2, B hat 1. B rechnet also weiter. In der Schlange steht C aber <b>vor A</b>.', to: 5 },
+      { say: 'B ist fertig. Von den Wartenden hat C die höhere Priorität. C rechnet zwei Zeiteinheiten und ist fertig.', to: 7 },
+      { say: 'Erst jetzt kommt A wieder dran und rechnet seine restlichen 4 Zeiteinheiten.', to: 11 },
+      ...mBeats(
+        '<b>Wartezeit:</b> A wartet 6, B wartet 0, C wartet 2. Bei A zählt auch das Warten in der Mitte mit.',
+        '<b>Verweildauer:</b> A: 11, B: 4, C: 4. A war fast die ganze Zeit im System.',
+        '<b>Kontextwechsel:</b> von A zu B, von B zu C, von C zurück zu A. Das sind 3.',
+        '<b>Durchsatz:</b> B und C sind in den ersten 8 Zeiteinheiten fertig. Also 2 ÷ 8 = 0,25.')
+    ] },
+    { dot: 'c', rule: 'sjf', act: 'Aufgabe 1 c)', title: 'c) Shortest Job First', chip: 'Regel: Kürzeste Dauer zuerst', hl: 'dau', beats: [
+      { say: 'Die Regel: <b>Wenn die CPU frei wird</b>, kommt der wartende Prozess mit der <b>kürzesten Dauer</b> dran. Unterbrochen wird nie. Laut Aufgabe ist nur Teil b) präemptiv.' },
+      { say: 'Zeiteinheit 1: Nur A ist da. A ist der längste Prozess, aber es gibt keine Auswahl. A rechnet.', to: 1 },
+      { say: 'Zeiteinheit 2: B kommt an. A rechnet einfach weiter, denn hier wird <b>nie unterbrochen</b>. Verglichen wird erst, wenn die CPU frei wird. B wartet.', to: 3 },
+      { say: 'Zeiteinheit 4: C kommt an. Auch jetzt rechnet A weiter. In der Schlange stellt sich C <b>vor B</b>, denn C braucht nur 2 und B braucht 4.', to: 5 },
+      { say: 'Übrigens: Auch <b>mit</b> Unterbrechen wäre hier nichts anders gelaufen. Als B kam, hatte A noch 4 übrig, genauso viel wie B. Als C kam, hatte A noch 2, genauso viel wie C. Niemand war kürzer als der Rest von A.' },
+      { say: 'A ist fertig. Der kürzeste Wartende ist C, obwohl B schon länger wartet. C rechnet.', to: 7 },
+      { say: 'Zum Schluss rechnet B seine 4 Zeiteinheiten.', to: 11 },
+      ...mBeats(
+        '<b>Wartezeit:</b> A wartet 0, B wartet 6, C wartet 2. B zahlt dafür, dass C vorgelassen wurde.',
+        '<b>Verweildauer:</b> A: 5, B: 10, C: 4.',
+        '<b>Kontextwechsel:</b> von A zu C und von C zu B. Das sind 2, genauso wenige wie bei FCFS.',
+        '<b>Durchsatz:</b> A und C sind in den ersten 8 Zeiteinheiten fertig. Also 2 ÷ 8 = 0,25.')
+    ] },
+    { dot: 'd', rule: 'rr', act: 'Aufgabe 1 d)', title: 'd) Round Robin, Zeitscheibe 2 ZE', chip: 'Regel: Nach 2 ZE hinten anstellen', hl: '', beats: [
+      { say: 'Die Regel: Jeder darf höchstens <b>2 Zeiteinheiten</b> am Stück rechnen. Dann muss er sich <b>hinten anstellen</b>. Prioritäten gibt es nicht.' },
+      { say: 'Zeiteinheit 1: A rechnet. In Zeiteinheit 2 kommt B an und wartet. Danach ist die Zeitscheibe von A voll.', to: 2 },
+      { say: 'A muss sich hinten anstellen, B bekommt die CPU. In Zeiteinheit 4 kommt C an und stellt sich <b>hinter A</b>.', to: 4 },
+      { say: 'Die Zeitscheibe von B ist voll. B geht nach hinten, vorne steht A. A rechnet wieder 2 Zeiteinheiten.', to: 6 },
+      { say: 'Jetzt ist C zum ersten Mal dran. C braucht genau 2 Zeiteinheiten und wird in seiner ersten Zeitscheibe fertig.', to: 8 },
+      { say: 'B rechnet seine letzten 2 Zeiteinheiten und ist fertig.', to: 10 },
+      { say: 'A fehlt noch eine Zeiteinheit. Nach Zeiteinheit 11 sind alle fertig.', to: 11 },
+      ...mBeats(
+        '<b>Wartezeit:</b> A wartet 6, B wartet 5, C wartet 3. Alle warten, aber immer nur in kurzen Stücken.',
+        '<b>Verweildauer:</b> A: 11, B: 9, C: 5.',
+        '<b>Kontextwechsel:</b> nach fast jeder Zeitscheibe einer. Das sind 5, mehr als bei jeder anderen Regel.',
+        '<b>Durchsatz:</b> Nur C ist in den ersten 8 Zeiteinheiten fertig. Also 1 ÷ 8 = 0,125.')
+    ] },
+    { dot: '=', cmp: true, act: 'Aufgabe 1 · Vergleich', title: 'Alle vier Regeln nebeneinander', beats: [
+      { say: 'Dieselben drei Prozesse, vier Regeln. Jedes Mal rechnen sie in einer anderen Reihenfolge.', c: 1 },
+      { say: '<b>Kontextwechsel:</b> FCFS und SJF wechseln am seltensten, Round Robin am häufigsten. In echten Systemen kostet jeder Wechsel Zeit.', c: 2 },
+      { say: '<b>Warten und Verweilen:</b> SJF hat die kleinsten Mittelwerte. Priority kommt hier zufällig auf dieselben Zahlen. Round Robin ist am langsamsten.', c: 3 },
+      { say: '<b>Durchsatz:</b> SJF und Priority bekommen in 8 Zeiteinheiten zwei Prozesse fertig, FCFS und Round Robin nur einen.', c: 4 },
+      { say: 'Warum dann Round Robin? Weil dort jeder <b>schnell zum ersten Mal</b> drankommt. C wartet bei FCFS 6 Zeiteinheiten auf den Start, bei Round Robin nur 3. Mehr dazu in Aufgabe 3.', c: 5 }
+    ] }
+  ];
+
+  /* Jeder Schritt mit Animation wird zu zwei Klicks: erst der Text, dann „Zeigen“. */
+  function expand(sc) {
+    const sm = SIM[sc.rule || 'fcfs'], steps = [];
+    let st = { i: 0, m: 0, hl: sc.hl || '', arr: sc.rule ? 1 : 0, lg: 0, c: 0 };
+    sc.beats.forEach(b => {
+      const nx = { ...st };
+      if (b.to != null) nx.i = idx(sm, b.to, b.ph);
+      ['m', 'hl', 'arr', 'lg', 'c'].forEach(k => { if (b[k] != null) nx[k] = b[k]; });
+      if (b.to != null || b.m != null || b.c === 1) { steps.push({ say: b.say, st: { ...st } }); steps.push({ say: b.say, st: nx, play: true }); }
+      else steps.push({ say: b.say, st: nx, soft: true });
+      st = nx;
+    });
+    return steps;
+  }
+
+  let cur = 0, k = 0, steps = [];
+  const dots = $('dots');
+  S.forEach((s, i) => { const d = document.createElement('button'); d.className = 'dot'; d.textContent = s.dot; d.title = s.title; d.onclick = () => show(i); dots.appendChild(d); });
+
+  function ui() {
+    const nx = steps[k + 1];
+    $('next').textContent = busy ? 'läuft …' : nx && nx.play ? 'Zeigen →' : 'Weiter →';
+    $('next').classList.toggle('play', !busy && !!(nx && nx.play));
+    $('next').disabled = !busy && !nx && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && k === 0;
+    $('cnt').textContent = 'Schritt ' + (k + 1) + ' / ' + steps.length;
+  }
+  function go(j, anim) {
+    const from = steps[k] ? steps[k].st : null, s = steps[j]; k = j;
+    $('say').innerHTML = s.say;
+    stop(); busy = false; target = s.st;
+    if (anim && s.play && from) play(from, s.st);
+    else draw(s.st, !(anim && s.soft));
+    ui();
+  }
+  function show(i, last) {
+    stop(); busy = false; cur = i; scene = S[i]; sim = SIM[scene.rule || 'fcfs']; steps = expand(scene);
+    $('act').textContent = scene.act; $('ttl').textContent = scene.title;
+    [...dots.children].forEach((d, n) => { if (n === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    k = 0; go(last ? steps.length - 1 : 0, false);
+  }
+  function next() {
+    if (busy) return finish();
+    if (k < steps.length - 1) go(k + 1, true); else if (cur < S.length - 1) show(cur + 1);
+  }
+  function prev() {
+    if (busy) finish();
+    if (k > 0) go(k - 1, false); else if (cur > 0) show(cur - 1, true);
+  }
+  $('next').onclick = next; $('prev').onclick = prev; $('replay').onclick = () => show(cur);
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'r' || e.key === 'R') show(cur);
+  });
+
+  function fit() {
+    const w = box.clientWidth, s = Math.max(0.5, Math.min(w / 1000, (window.innerHeight - 250) / 380, 1.6));
+    stage.style.transform = 'scale(' + s + ')'; stage.style.left = (w - 1000 * s) / 2 + 'px'; box.style.height = 380 * s + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.__go = (i, j) => { show(i); if (j) go(Math.min(j, steps.length - 1), false); };
+  window.__sim = SIM;
+  fit(); show(0);
+})();
+</script>
+</body>
+</html>

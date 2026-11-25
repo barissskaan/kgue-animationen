@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGÜ 3 · Aufgabe 1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Aufgabe 1 (Fakultät in Rust): Der Compiler ist dein Lehrer.
+   Gleicher Aufbau wie die KGÜ-5-Seiten, bewusst nur hell (Beamer).
+   Alle Ausgaben echt (rustc/cargo 1.99.1), Meldungen gekürzt. Keine Emoji. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f1f2f5;
+  --warn: #c2410c; --err: #b42318; --ok: #2f7d2f; --hl: #fff1a8; --ptr: #ffd400; --cand: #2f5fb8;
+  --term: #1b1f27;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 10px 16px 10px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 24px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.top .act { color: var(--fg); }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--cand); outline-offset: 2px; }
+code, .mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+.cap code { font-size: 0.88em; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 0 0; }
+.stage.noanim, .stage.noanim * { transition: none !important; animation: none !important; }
+
+/* Editor */
+#ed { position: absolute; left: 10px; top: 4px; width: 500px; height: 372px; border: 2px solid var(--fg); border-radius: 10px; background: #fbfbfc; overflow: hidden; }
+#edbar { height: 28px; background: var(--soft); border-bottom: 1.5px solid var(--line); display: flex; align-items: flex-end; padding-left: 8px; }
+#edtab { height: 24px; padding: 0 12px; background: #fbfbfc; border: 1.5px solid var(--line); border-bottom: none; border-radius: 6px 6px 0 0; font-family: var(--font-mono); font-size: 13px; line-height: 22px; }
+#edbody { position: absolute; left: 0; right: 0; top: 30px; bottom: 0; }
+.ln { position: absolute; left: 0; width: 30px; text-align: right; font-family: var(--font-mono); font-size: 12px; line-height: 17.4px; color: #9aa0ab; transition: opacity 0.4s; }
+.el { position: absolute; left: 40px; right: 0; height: 17.4px; font-family: var(--font-mono); font-variant-ligatures: none; font-size: 13.8px; line-height: 17.4px; white-space: pre; transition: top 0.6s ease-in-out, opacity 0.5s, background 0.5s; }
+.el.new { background: var(--hl); }
+.el.bad { background: #fde2df; }
+.sq { text-decoration: underline wavy var(--err); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+.fx { background: #ffd84d; border-radius: 3px; }
+.k { color: #7a3fb0; font-weight: 600; }
+.s { color: #2f7a35; }
+.m { color: #a15c07; }
+.ty { color: #1f5fa8; }
+.nu { color: #b45309; }
+
+/* Bildfläche rechts */
+#vz { position: absolute; left: 525px; top: 4px; width: 465px; height: 246px; border: 2px solid var(--fg); border-radius: 12px; background: #fff; overflow: hidden; }
+.vl { position: absolute; inset: 0; transition: opacity 0.45s; }
+.vl.off { opacity: 0; pointer-events: none; }
+.vlab { position: absolute; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+
+/* Terminal */
+#tm { position: absolute; left: 525px; top: 258px; width: 465px; height: 118px; border: 2px solid var(--fg); border-radius: 10px; background: var(--term); overflow: hidden; }
+#tmbar { height: 18px; background: #2c323d; display: flex; align-items: center; gap: 5px; padding-left: 8px; }
+#tmbar b { width: 8px; height: 8px; border-radius: 50%; background: #5b6372; }
+#tl { padding: 3px 8px; }
+.tln { font-family: var(--font-mono); font-variant-ligatures: none; font-size: 12.5px; line-height: 15.5px; white-space: pre-wrap; color: #e6e9ef; opacity: 0; transform: translateX(-6px); transition: opacity 0.3s, transform 0.3s; }
+.tln.on { opacity: 1; transform: none; }
+.tln .pr { color: #7fd18b; }
+.tln.err { color: #ff8a80; }
+.tln.ok { color: #b9f6a0; }
+.tln.dim { color: #8e96a5; }
+.tln.inp { color: #fff; font-weight: 600; }
+
+/* Lehrer-Karte: was der Compiler sagt */
+.card { position: absolute; left: 12px; right: 12px; top: 10px; border: 2px solid var(--err); border-radius: 10px; background: #fff7f6; padding: 8px 12px; opacity: 0; transform: translateY(-8px); transition: opacity 0.4s, transform 0.4s; z-index: 5; }
+.card.on { opacity: 1; transform: none; }
+.card small { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--err); }
+.card b { display: block; font-size: 18px; line-height: 1.3; }
+
+/* Ziel und Ordner */
+.gbox { position: absolute; top: 96px; height: 64px; border: 2.5px solid var(--fg); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 26px; font-weight: 600; }
+.tree { position: absolute; left: 40px; top: 40px; font-family: var(--font-mono); font-size: 17px; line-height: 34px; }
+.tree div { display: flex; align-items: center; gap: 8px; opacity: 0; transform: translateX(-10px); transition: opacity 0.4s, transform 0.4s; }
+.tree div.on { opacity: 1; transform: none; }
+
+/* Schloss */
+.vbox { position: absolute; left: 120px; top: 110px; width: 230px; height: 96px; border: 2.5px solid var(--fg); border-radius: 10px; background: #fff; }
+.vbox .vn { position: absolute; left: 12px; top: 8px; font-family: var(--font-mono); font-weight: 600; font-size: 20px; }
+.vbox .vt { position: absolute; left: 12px; top: 40px; font-family: var(--font-mono); font-size: 15px; color: var(--muted); }
+.vbox .vs { position: absolute; left: 12px; bottom: 8px; font-size: 14.5px; font-weight: 600; transition: color 0.4s; }
+#shackle { transform-origin: 38px 26px; transition: transform 0.6s ease-in-out; }
+#lockbody { transition: fill 0.5s; }
+
+/* Förderband */
+.key { position: absolute; top: 60px; width: 56px; height: 56px; border: 2.5px solid var(--fg); border-radius: 9px; background: #f4f5f8; box-shadow: 0 5px 0 #9aa0ab; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-weight: 600; font-size: 24px; transition: transform 0.15s, box-shadow 0.15s; }
+.key.press { transform: translateY(4px); box-shadow: 0 1px 0 #9aa0ab; }
+.key.enter { width: 82px; font-size: 16px; font-family: var(--font-body); }
+.belt { position: absolute; left: 30px; top: 156px; width: 405px; height: 18px; border-radius: 9px; background: repeating-linear-gradient(90deg, #6b7280 0 10px, #4b5160 10px 20px); border: 2px solid var(--fg); }
+.chip { position: absolute; width: 40px; height: 40px; border: 2px solid var(--fg); border-radius: 6px; background: #fff; font-family: var(--font-mono); font-weight: 600; font-size: 20px; display: flex; align-items: center; justify-content: center; transition: left 1s ease-in-out, top 0.5s ease-in-out, opacity 0.4s, transform 0.5s; z-index: 3; }
+.chip.nl { color: var(--err); }
+.chip.hide { opacity: 0; }
+.scell { position: absolute; top: 186px; width: 44px; height: 44px; border: 2px dashed var(--line); border-radius: 6px; }
+.slab { position: absolute; font-family: var(--font-mono); font-size: 15px; }
+
+/* Maschine parse() */
+.mach { position: absolute; left: 182px; top: 96px; width: 120px; height: 96px; border: 3px solid var(--fg); border-radius: 12px; background: #e9edf5; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.mach b { font-family: var(--font-mono); font-size: 19px; }
+.mach span { font-size: 12.5px; color: var(--muted); }
+.mout { position: absolute; left: 340px; top: 116px; min-width: 70px; height: 56px; padding: 0 10px; border: 2.5px solid var(--fg); border-radius: 10px; background: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-weight: 600; font-size: 24px; transition: opacity 0.4s, background 0.4s, border-color 0.4s, color 0.4s; }
+.mout.okv { border-color: var(--ok); color: var(--ok); background: #eef9ee; }
+.mout.bad { border-color: var(--err); color: var(--err); background: #fde7e4; }
+.cands { position: absolute; left: 310px; top: 186px; width: 160px; display: flex; flex-wrap: wrap; gap: 6px; }
+.cands span { font-family: var(--font-mono); font-size: 14px; border: 1.5px solid var(--line); border-radius: 6px; padding: 1px 6px; opacity: 0; transition: opacity 0.4s; }
+.cands.on span { opacity: 1; }
+.mtype { position: absolute; left: 340px; top: 94px; font-family: var(--font-mono); font-size: 14px; color: var(--cand); font-weight: 600; opacity: 0; transition: opacity 0.4s; }
+.mtype.on { opacity: 1; }
+.xmark { position: absolute; width: 40px; height: 40px; opacity: 0; transition: opacity 0.3s; z-index: 4; }
+.xmark.on { opacity: 1; }
+#sciss { position: absolute; width: 54px; height: 40px; opacity: 0; transition: left 0.8s ease-in-out, opacity 0.3s; z-index: 4; }
+
+/* Paket Result */
+.pkg { position: absolute; top: 76px; width: 150px; height: 110px; }
+.pkgbody { position: absolute; left: 0; right: 0; bottom: 0; height: 78px; border: 2.5px solid var(--fg); border-radius: 6px; background: #d7b98a; }
+.pkglid { position: absolute; left: -6px; right: -6px; top: 18px; height: 22px; border: 2.5px solid var(--fg); border-radius: 5px; background: #c9a56f; transform-origin: 6px 22px; transition: transform 0.6s ease-in-out; z-index: 2; }
+.pkg.open .pkglid { transform: translate(-18px, -30px) rotate(-14deg); }
+.pkglab { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font-family: var(--font-mono); font-weight: 600; font-size: 15px; }
+.pkgin { position: absolute; left: 0; right: 0; top: 46px; text-align: center; font-family: var(--font-mono); font-weight: 600; font-size: 22px; opacity: 0; transition: opacity 0.4s, transform 0.6s; z-index: 1; }
+.pkg.open .pkgin { opacity: 1; transform: translateY(-34px); }
+.pkgt { position: absolute; top: 194px; width: 150px; text-align: center; font-size: 14.5px; color: var(--muted); }
+.boom { position: absolute; opacity: 0; transform: scale(0.4); transition: opacity 0.3s, transform 0.4s; z-index: 3; }
+.boom.on { opacity: 1; transform: none; }
+
+/* Stack */
+.frm { position: absolute; left: 30px; width: 250px; height: 30px; border: 2px solid var(--fg); border-radius: 7px; background: #eef2fb; font-family: var(--font-mono); font-size: 15px; line-height: 26px; padding-left: 10px; opacity: 0; transform: translateY(-8px); transition: opacity 0.4s, transform 0.4s; }
+.frm.on { opacity: 1; transform: none; }
+.frm.main { background: #f4f5f8; }
+.rv { position: absolute; left: 296px; font-family: var(--font-mono); font-size: 16px; font-weight: 600; color: var(--ok); opacity: 0; transition: opacity 0.4s; }
+.rv.on { opacity: 1; }
+
+/* Buch */
+.bk { position: absolute; left: 156px; top: 12px; right: 12px; font-size: 14.5px; line-height: 1.32; }
+.bk h3 { margin: 0 0 4px; font-size: 18px; line-height: 1.2; }
+.bk p { margin: 0 0 6px; }
+.bk code { font-size: 13.5px; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+.bk .tip { background: var(--hl); border-radius: 6px; padding: 4px 8px; }
+
+/* Zahlenkreis u64 */
+#dptr { transform-origin: 140px 125px; }
+.dval { position: absolute; left: 290px; font-family: var(--font-mono); font-size: 14px; line-height: 1.3; opacity: 0; transition: opacity 0.4s; }
+.dval.on { opacity: 1; }
+.dval b { display: block; font-size: 12px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+
+/* Buch (nur auf dem ersten Schritt) */
+#book { position: absolute; inset: 0; background: #fff; z-index: 20; transition: opacity 0.5s; }
+#book.off { opacity: 0; pointer-events: none; }
+#book .bkc { position: absolute; left: 260px; top: 30px; width: 600px; font-size: 18px; line-height: 1.4; }
+#book h3 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
+#book p { margin: 0 0 10px; }
+#book code { font-size: 16px; background: var(--soft); border-radius: 4px; padding: 0 5px; }
+#book .tip { background: var(--hl); border-radius: 8px; padding: 6px 10px; }
+
+/* Schluss: das Rust-Buch */
+#fin { position: absolute; inset: 0; background: #fff; z-index: 25; transition: opacity 0.5s; }
+#fin.off { opacity: 0; pointer-events: none; }
+#fin .fbk { position: absolute; left: 20px; top: 14px; width: 190px; text-align: center; font-size: 14.5px; line-height: 1.3; }
+#fin .fbk code { font-size: 13px; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+#fin .fr { position: absolute; left: 230px; top: 6px; right: 10px; }
+#fin h3 { margin: 0 0 6px; font-size: 20px; }
+.fq { display: flex; align-items: center; gap: 12px; border: 2px solid var(--fg); border-radius: 10px; padding: 6px 12px; margin-bottom: 7px; background: #fff; opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s; }
+.fq.on { opacity: 1; transform: none; }
+.fq .q { flex: 1; font-size: 16px; line-height: 1.25; }
+.fq .q b { display: block; font-size: 16.5px; }
+.fq .q b code { font-size: 15px; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+.fq .q span { color: var(--muted); font-size: 14.5px; }
+.fq .kp { flex: none; font-size: 13.5px; font-weight: 600; background: var(--hl); border: 1.5px solid #c9a300; border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+
+.cap { margin-top: 8px; min-height: 118px; }
+.cap h1 { font-size: 24px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.cap p { margin: 0; font-size: 21px; line-height: 1.35; max-width: 84ch; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot { width: 30px; height: 30px; padding: 0; border-radius: 50%; border-color: var(--line); font-family: var(--font-mono); font-size: 14px; }
+.dot[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#next { min-width: 170px; background: var(--fg); color: var(--bg); margin-left: auto; }
+#next.play { background: var(--ptr); color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="act" id="act"></span><span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+      <div id="ed"><div id="edbar"><div id="edtab">src/main.rs</div></div><div id="edbody"></div></div>
+
+      <div id="vz">
+        <div class="card" id="card"><small id="cardh"></small><b id="cardt"></b></div>
+
+        <!-- Ziel -->
+        <div class="vl" id="v-goal">
+          <div class="vlab" style="left:14px;top:12px">Das Ziel</div>
+          <div class="gbox" style="left:26px;width:80px">5</div>
+          <svg style="position:absolute;left:110px;top:116px" width="40" height="24" viewBox="0 0 40 24"><path d="M2 12 H32 M26 5 L35 12 L26 19" fill="none" stroke="var(--fg)" stroke-width="2.5" stroke-linejoin="round"/></svg>
+          <div class="gbox" style="left:154px;width:150px;font-size:20px;background:#e9edf5">factorial</div>
+          <svg style="position:absolute;left:308px;top:116px" width="40" height="24" viewBox="0 0 40 24"><path d="M2 12 H32 M26 5 L35 12 L26 19" fill="none" stroke="var(--fg)" stroke-width="2.5" stroke-linejoin="round"/></svg>
+          <div class="gbox" style="left:352px;width:90px;color:var(--ok)">120</div>
+          <div style="position:absolute;left:0;right:0;top:182px;text-align:center;font-family:var(--font-mono);font-size:18px">5! = 5 · 4 · 3 · 2 · 1 = 120</div>
+        </div>
+
+        <!-- Ordner von cargo new -->
+        <div class="vl off" id="v-tree">
+          <div class="vlab" style="left:14px;top:12px">cargo new factorial erzeugt</div>
+          <div class="tree" id="tree"></div>
+        </div>
+
+        <!-- Schloss: let und mut -->
+        <div class="vl off" id="v-lock">
+          <div class="vbox"><span class="vn">input</span><span class="vt">String</span><span class="vs" id="lockt"></span></div>
+          <svg style="position:absolute;left:366px;top:112px" width="76" height="90" viewBox="0 0 76 90" aria-hidden="true">
+            <path id="shackle" d="M20 40 V26 a18 18 0 0 1 36 0 V40" fill="none" stroke="var(--fg)" stroke-width="7" stroke-linecap="round"/>
+            <rect id="lockbody" x="8" y="38" width="60" height="46" rx="8" fill="#c0352b" stroke="var(--fg)" stroke-width="3"/>
+            <circle cx="38" cy="58" r="6" fill="var(--fg)"/><rect x="35" y="60" width="6" height="12" rx="2" fill="var(--fg)"/>
+          </svg>
+        </div>
+
+        <!-- Förderband: Tastatur in den String -->
+        <div class="vl off" id="v-belt">
+          <div class="vlab" style="left:14px;top:12px">Tastatur</div>
+          <div class="key" id="k5" style="left:30px">5</div>
+          <div class="key enter" id="kE" style="left:100px">Enter</div>
+          <div class="belt"></div>
+          <div class="slab" style="left:252px;top:196px"><b>input</b> =</div>
+          <div class="scell" style="left:330px"></div><div class="scell" style="left:380px"></div>
+          <div class="slab" id="blen" style="left:340px;top:12px;opacity:0;transition:opacity 0.4s">len = 2</div>
+          <div class="chip" id="c5">5</div><div class="chip nl" id="cN">\n</div>
+        </div>
+
+        <!-- Maschine parse() -->
+        <div class="vl off" id="v-mach">
+          <div class="vlab" style="left:20px;top:92px">input</div>
+          <div class="scell" style="left:20px;top:112px;border-style:solid;border-color:var(--fg)"></div><div class="scell" style="left:70px;top:112px;border-style:solid;border-color:var(--fg)"></div>
+          <div class="chip" id="m5" style="left:22px;top:114px">5</div><div class="chip nl" id="mN" style="left:72px;top:114px">\n</div>
+          <svg class="xmark" id="mX" style="left:240px;top:200px" viewBox="0 0 40 40"><path d="M8 8 L32 32 M32 8 L8 32" stroke="var(--err)" stroke-width="5" stroke-linecap="round"/></svg>
+          <svg id="sciss" viewBox="0 0 54 40" aria-hidden="true"><circle cx="9" cy="10" r="7" fill="none" stroke="var(--fg)" stroke-width="3"/><circle cx="9" cy="30" r="7" fill="none" stroke="var(--fg)" stroke-width="3"/><path d="M15 14 L52 30 M15 26 L52 10" stroke="var(--fg)" stroke-width="3" stroke-linecap="round"/></svg>
+          <div class="mach"><b>parse()</b><span>Text wird Zahl</span></div>
+          <svg style="position:absolute;left:304px;top:132px" width="34" height="24" viewBox="0 0 34 24"><path d="M2 12 H26 M20 5 L29 12 L20 19" fill="none" stroke="var(--fg)" stroke-width="2.5" stroke-linejoin="round"/></svg>
+          <div class="mtype" id="mtype">u64</div>
+          <div class="mout" id="mout">?</div>
+          <div class="cands" id="cands"><span>u8</span><span>i32</span><span>u64</span><span>i64</span><span>f64</span></div>
+        </div>
+
+        <!-- Paket Result -->
+        <div class="vl off" id="v-res">
+          <div class="vlab" style="left:14px;top:12px">parse() liefert ein Result</div>
+          <div class="pkg" id="pkgA" style="left:50px"><div class="pkgin" id="pkAin" style="color:var(--ok)">5</div><div class="pkglid"></div><div class="pkgbody"><div class="pkglab">Ok(5)</div></div></div>
+          <div class="pkgt" style="left:50px">Eingabe <b>5</b></div>
+          <div class="pkg" id="pkgB" style="left:265px"><div class="pkgin" style="color:var(--err)">!</div><div class="pkglid"></div><div class="pkgbody" style="background:#e0b4ac"><div class="pkglab">Err(…)</div></div></div>
+          <div class="pkgt" style="left:265px">Eingabe <b>abc</b></div>
+          <svg class="boom" id="boom" style="left:270px;top:20px" width="140" height="80" viewBox="0 0 140 80"><path d="M70 4 L82 26 L108 14 L98 38 L132 44 L100 54 L112 76 L80 62 L70 78 L60 62 L28 76 L40 54 L8 44 L42 38 L32 14 L58 26 Z" fill="#ffe0db" stroke="var(--err)" stroke-width="3" stroke-linejoin="round"/><text x="70" y="49" text-anchor="middle" font-size="17" font-weight="700" fill="var(--err)" font-family="IBM Plex Sans, sans-serif">panic!</text></svg>
+        </div>
+
+        <!-- Stack -->
+        <div class="vl off" id="v-stack">
+          <div class="vlab" style="left:30px;top:8px">Stack, wächst nach unten</div>
+          <div class="vlab" style="left:296px;top:8px">gibt zurück</div>
+          <div id="frames"></div>
+        </div>
+
+        <!-- Buch -->
+        <div class="vl off" id="v-book">
+          <div style="position:absolute;left:22px;top:40px"><svg width="118" height="160" viewBox="0 0 118 160" aria-hidden="true"><rect x="10" y="6" width="100" height="148" rx="4" fill="#d9d4c7" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="100" height="148" rx="4" fill="#2b2f36" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="12" height="148" fill="#1d2026"/><circle cx="60" cy="58" r="22" fill="none" stroke="#f5a65b" stroke-width="5"/><circle cx="60" cy="58" r="8" fill="#f5a65b"/><g stroke="#f5a65b" stroke-width="5" stroke-linecap="round"><path d="M60 28 v-6 M60 94 v-6 M30 58 h-6 M96 58 h-6 M39 37 l-4 -4 M85 83 l-4 -4 M39 79 l-4 4 M85 33 l-4 4"/></g><text x="60" y="118" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">The Rust</text><text x="60" y="131" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Programming</text><text x="60" y="144" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Language</text></svg></div>
+          <div class="bk"><h3>„The Rust Programming Language“</h3>
+            <p>Das offizielle Buch vom Rust-Team, kostenlos: <code>doc.rust-lang.org/book</code></p>
+            <p>Sehr gut lesbar, erklärt alles Schritt für Schritt. Ideal zum Lernen und für den Umstieg von C.</p>
+            <p class="tip">Passt zu heute: <b>Kapitel 2</b>, das Ratespiel, mit <code>read_line</code>, <code>trim</code> und <code>parse</code>.</p></div>
+        </div>
+
+        <!-- Zahlenkreis -->
+        <div class="vl off" id="v-dial">
+          <svg style="position:absolute;left:0;top:0" width="290" height="246" viewBox="0 0 290 246" aria-hidden="true">
+            <circle cx="140" cy="125" r="100" fill="#f6f7fb" stroke="var(--fg)" stroke-width="3"/>
+            <path d="M140 25 V39" stroke="var(--fg)" stroke-width="3"/>
+            <text x="148" y="20" font-size="13" font-family="JetBrains Mono, monospace" fill="var(--fg)">0</text>
+            <text x="58" y="20" font-size="12" font-family="JetBrains Mono, monospace" fill="var(--err)">2⁶⁴ − 1</text>
+            <path id="dred" d="M140 25 A100 100 0 0 1 140 25" fill="none" stroke="var(--err)" stroke-width="7" opacity="0"/>
+            <g id="dptr"><path d="M140 125 V40" stroke="var(--cand)" stroke-width="5" stroke-linecap="round"/><circle cx="140" cy="40" r="7" fill="var(--cand)" stroke="var(--fg)" stroke-width="2"/></g>
+            <circle cx="140" cy="125" r="7" fill="var(--fg)"/>
+          </svg>
+          <div class="dval on" id="dv1" style="top:30px"><b>20! passt</b>2432902008176640000</div>
+          <div class="dval" id="dv2" style="top:96px;color:var(--err)"><b>21! wäre</b>51090942171709440000</div>
+          <div class="dval" id="dv3" style="top:162px;color:var(--err)"><b>übrig nach dem Kreis</b>14197454024290336768</div>
+        </div>
+      </div>
+
+      <div id="tm"><div id="tmbar"><b></b><b></b><b></b></div><div id="tl"></div></div>
+      <div id="book" class="off">
+        <div style="position:absolute;left:90px;top:40px"><svg width="148" height="200" viewBox="0 0 118 160" aria-hidden="true"><rect x="10" y="6" width="100" height="148" rx="4" fill="#d9d4c7" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="100" height="148" rx="4" fill="#2b2f36" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="12" height="148" fill="#1d2026"/><circle cx="60" cy="58" r="22" fill="none" stroke="#f5a65b" stroke-width="5"/><circle cx="60" cy="58" r="8" fill="#f5a65b"/><g stroke="#f5a65b" stroke-width="5" stroke-linecap="round"><path d="M60 28 v-6 M60 94 v-6 M30 58 h-6 M96 58 h-6 M39 37 l-4 -4 M85 83 l-4 -4 M39 79 l-4 4 M85 33 l-4 4"/></g><text x="60" y="118" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">The Rust</text><text x="60" y="131" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Programming</text><text x="60" y="144" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Language</text></svg></div>
+        <div class="bkc"><h3>Zum Weiterlernen: „The Rust Programming Language“</h3>
+          <p>Das offizielle Buch, geschrieben vom Rust-Team. Kostenlos online: <code>doc.rust-lang.org/book</code></p>
+          <p>Liest sich sehr angenehm und erklärt alles Schritt für Schritt, mit vielen Beispielen. Ideal für alle, die Rust lernen oder von C umsteigen wollen.</p>
+          <p class="tip">Passt zu heute: <b>Kapitel 2</b>, das Ratespiel. Dort kommen <code>read_line</code>, <code>trim</code> und <code>parse</code> genauso vor.</p></div>
+      </div>
+      <div id="fin" class="off"><div class="fbk"><svg width="148" height="200" viewBox="0 0 118 160" aria-hidden="true"><rect x="10" y="6" width="100" height="148" rx="4" fill="#d9d4c7" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="100" height="148" rx="4" fill="#2b2f36" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="12" height="148" fill="#1d2026"/><circle cx="60" cy="58" r="22" fill="none" stroke="#f5a65b" stroke-width="5"/><circle cx="60" cy="58" r="8" fill="#f5a65b"/><g stroke="#f5a65b" stroke-width="5" stroke-linecap="round"><path d="M60 28 v-6 M60 94 v-6 M30 58 h-6 M96 58 h-6 M39 37 l-4 -4 M85 83 l-4 -4 M39 79 l-4 4 M85 33 l-4 4"/></g><text x="60" y="118" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">The Rust</text><text x="60" y="131" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Programming</text><text x="60" y="144" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Language</text></svg><div style="margin-top:6px"><b>Kostenlos online:</b><br><code>doc.rust-lang.org/book</code></div></div><div class="fr"><h3>Für alle, die mehr wissen wollen</h3><div class="fq"><div class="q"><b>Warum hat <code>println!</code> ein Ausrufezeichen?</b><span>Es ist ein Makro, keine normale Funktion.</span></div><div class="kp">Kap. 1.2</div></div><div class="fq"><div class="q"><b>Warum <code>&amp;mut input</code> in <code>read_line</code>?</b><span><code>&amp;</code> leiht <code>input</code> aus, <code>mut</code> erlaubt dabei das Ändern.</span></div><div class="kp">Kap. 2 und 4.2</div></div><div class="fq"><div class="q"><b>Was genau sind <code>Result</code>, <code>unwrap</code> und <code>expect</code>?</b><span>So geht Rust mit Fehlern um.</span></div><div class="kp">Kap. 2 und 9.2</div></div><div class="fq"><div class="q"><b>Warum <code>let mut</code>, und welche Typen wie <code>u64</code> gibt es?</b><span>Variablen, Veränderbarkeit und Zahlentypen.</span></div><div class="kp">Kap. 3.1 und 3.2</div></div><div class="fq"><div class="q"><b>Was passiert genau beim Überlauf?</b><span>Debug-Build: Panic. Release-Build: Die Zahl läuft im Kreis.</span></div><div class="kp">Kap. 3.2</div></div></div></div>
+    </div>
+  </div>
+  <div class="cap"><h1 id="ttl"></h1><p id="say"></p></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Zurück">←</button>
+    <span id="dots" style="display:flex;gap:6px"></span>
+    <button id="replay" aria-label="Teil neu starten" title="Teil neu starten (R)">↺</button>
+    <button id="again" aria-label="Letzte Animation wiederholen" title="Letzte Animation wiederholen (W)" style="display:inline-flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8 A5.5 5.5 0 1 1 11.6 3.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12.6 1 V4.6 H9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.3 5.6 L10.4 8 L6.3 10.4 Z" fill="currentColor"/></svg>Nochmal</button>
+    <button id="next">Weiter →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), box = $('box');
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  /* ---------- Code (alle Stände echt mit cargo 1.99.1 getestet) ---------- */
+  const L = {
+    u: 'use std::io;', bl: '',
+    f1: 'fn factorial(num: u64) -> u64 {', f2: '    if num <= 1 {', f3: '        1', f4: '    } else {', f5: '        num * factorial(num - 1)', f6: '    }', f7: '}', bl2: '',
+    mn: 'fn main() {', hw: '    println!("Hello, world!");', pr: '    println!("Please enter an integer: ");',
+    li0: '    let input = String::new();', li: '    let mut input = String::new();',
+    rl: '    io::stdin().read_line(&mut input).unwrap();', dbg: '    println!("{:?}", input);',
+    n1: '    let number = input.parse().unwrap();', n2: '    let number: u64 = input.parse().unwrap();', n3: '    let number: u64 = input.trim().parse().unwrap();',
+    n4a: '    let number: u64 = input.trim().parse()', n4b: '        .expect("This is not an integer!");',
+    pn: '    println!("{}", number);', fc: '    let fac = factorial(number);', pf: '    println!("Result: {}", fac);', end: '}'
+  };
+  const V = {
+    hello: ['mn', 'hw', 'end'],
+    A: ['u', 'bl', 'mn', 'pr', 'li0', 'rl', 'end'],
+    A2: ['u', 'bl', 'mn', 'pr', 'li', 'rl', 'end'],
+    B: ['u', 'bl', 'mn', 'pr', 'li', 'rl', 'dbg', 'end'],
+    C: ['u', 'bl', 'mn', 'pr', 'li', 'rl', 'n1', 'end'],
+    D: ['u', 'bl', 'mn', 'pr', 'li', 'rl', 'n2', 'pn', 'end'],
+    E: ['u', 'bl', 'mn', 'pr', 'li', 'rl', 'n3', 'pn', 'end'],
+    F: ['u', 'bl', 'mn', 'pr', 'li', 'rl', 'n4a', 'n4b', 'pn', 'end'],
+    G: ['u', 'bl', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'bl2', 'mn', 'pr', 'li', 'rl', 'n4a', 'n4b', 'fc', 'pf', 'end']
+  };
+  const KW = new Set('use fn let mut if else'.split(' '));
+  const TY = new Set('u64 String io'.split(' '));
+  function hl(line) {
+    let h = '', re = /("[^"]*")|([A-Za-z_][A-Za-z_0-9]*!?)|(\d+)|([^"A-Za-z_\d]+)/g, m;
+    while ((m = re.exec(line))) {
+      if (m[1]) h += '<span class="s">' + esc(m[1]) + '</span>';
+      else if (m[2]) { const w = m[2]; h += w.endsWith('!') ? '<span class="m">' + w + '</span>' : KW.has(w) ? '<span class="k">' + w + '</span>' : TY.has(w) ? '<span class="ty">' + w + '</span>' : w; }
+      else if (m[3]) h += '<span class="nu">' + m[3] + '</span>';
+      else h += esc(m[4]);
+    }
+    return h;
+  }
+  function lineHtml(id, sq, fx) {
+    const t = L[id];
+    const mark = (sq && sq[0] === id) ? [sq[1], 'sq'] : (fx && fx[0] === id) ? [fx[1], 'fx'] : null;
+    if (!mark) return hl(t);
+    const i = t.indexOf(mark[0]);
+    if (i < 0) return hl(t);
+    return hl(t.slice(0, i)) + '<span class="' + mark[1] + '">' + hl(mark[0]) + '</span>' + hl(t.slice(i + mark[0].length));
+  }
+  let eh = '';
+  for (let i = 0; i < 19; i++) eh += '<div class="ln" id="ln' + i + '" style="top:' + (4 + i * 17.4) + 'px">' + (i + 1) + '</div>';
+  Object.keys(L).forEach(id => { eh += '<div class="el" id="el-' + id + '"></div>'; });
+  $('edbody').innerHTML = eh;
+
+  /* ---------- Terminal (echt, gekürzt) ---------- */
+  const P = 'du@laptop:~/factorial$';
+  const C = t => [t, 'cmd'], IN = t => [t, 'inp'];
+  const PAN = loc => ["thread 'main' panicked at " + loc + ':', 'err'];
+  const T = {
+    new: [[ 'cargo new factorial', 'cmd', 'du@laptop:~$'], ['    Creating binary (application) `factorial` package', 'dim'], ['cd factorial', 'cmd', 'du@laptop:~$'], C('cargo run'), ['Hello, world!', 'ok']],
+    A: [C('cargo run'), ['error[E0596]: cannot borrow `input` as mutable, as it is not declared as mutable', 'err'], [' --> src/main.rs:6:27', 'err'], ['help: consider changing this to be mutable', 'dim']],
+    B: [C('cargo run'), ['Please enter an integer: ', ''], IN('5'), ['"5\\n"', 'ok']],
+    C: [C('cargo run'), ['error[E0284]: type annotations needed', 'err'], [' --> src/main.rs:7:9', 'err'], ['help: consider giving `number` an explicit type', 'dim']],
+    D: [C('cargo run'), ['Please enter an integer: ', ''], IN('5'), PAN('src/main.rs:7:37'), ['called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }', 'err']],
+    E: [C('cargo run'), ['Please enter an integer: ', ''], IN('5'), ['5', 'ok']],
+    E2: [C('cargo run'), ['Please enter an integer: ', ''], IN('abc'), PAN('src/main.rs:7:44'), ['called `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }', 'err']],
+    F: [C('cargo run'), ['Please enter an integer: ', ''], IN('abc'), PAN('src/main.rs:8:10'), ['This is not an integer!: ParseIntError { kind: InvalidDigit }', 'err']],
+    G: [C('cargo run'), ['Please enter an integer: ', ''], IN('5'), ['Result: 120', 'ok']],
+    G20: [C('cargo run'), ['Please enter an integer: ', ''], IN('20'), ['Result: 2432902008176640000', 'ok']],
+    H: [C('cargo run'), ['Please enter an integer: ', ''], IN('21'), PAN('src/main.rs:7:9'), ['attempt to multiply with overflow', 'err']],
+    I: [C('cargo run --release'), ['Please enter an integer: ', ''], IN('21'), ['Result: 14197454024290336768', 'err']]
+  };
+  let shown = [];
+  function term(key, anim) {
+    const Tl = T[key] || [], el = $('tl');
+    const same = shown.length <= Tl.length && shown.every((l, i) => l[0] === Tl[i][0]);
+    const start = same ? shown.length : 0;
+    if (start === 0) el.innerHTML = '';
+    Tl.slice(start).forEach((l, j) => {
+      const d = document.createElement('div');
+      d.className = 'tln ' + (l[1] === 'cmd' ? '' : l[1] || '');
+      if (l[1] === 'cmd') d.innerHTML = '<span class="pr">' + esc(l[2] || P) + '</span> ' + esc(l[0]); else d.textContent = l[0];
+      el.appendChild(d);
+      if (anim) { void d.offsetWidth; d.style.transitionDelay = (0.15 + j * 0.4) + 's'; }
+      d.classList.add('on');
+    });
+    shown = Tl.map(l => l.slice());
+  }
+
+  /* ---------- Karten: was der Compiler sagt ---------- */
+  const CARD = {
+    A: ['Der Compiler sagt: E0596', 'Ich darf input nicht verändern. Du hast es nicht als veränderbar markiert.'],
+    C: ['Der Compiler sagt: E0284', 'In welchen Typ soll ich den Text umwandeln? Sag es mir.'],
+    D: ['Das Programm bricht ab: Panic', 'Der Text ist keine gültige Zahl. Er enthält ein Zeichen, das keine Ziffer ist.'],
+    H: ['Das Programm bricht ab: Panic', 'Beim Multiplizieren ist das Ergebnis zu groß für einen u64 geworden.']
+  };
+
+  /* ---------- Bildteile ---------- */
+  const FOLD = '<svg width="24" height="19" viewBox="0 0 60 48"><path d="M3 9 a4 4 0 0 1 4 -4 h15 l5 5 h26 a4 4 0 0 1 4 4 v28 a4 4 0 0 1 -4 4 H7 a4 4 0 0 1 -4 -4 Z" fill="#5aa9f0"/><path d="M3 16 h54 v25 a4 4 0 0 1 -4 4 H7 a4 4 0 0 1 -4 -4 Z" fill="#86c3f8"/></svg>';
+  const FIL = '<svg width="17" height="20" viewBox="0 0 40 48"><path d="M6 2 H26 L36 12 V44 a2 2 0 0 1 -2 2 H6 a2 2 0 0 1 -2 -2 V4 a2 2 0 0 1 2 -2 Z" fill="#fff" stroke="#8a909b" stroke-width="2.5"/><path d="M26 2 V12 H36" fill="#eef0f3" stroke="#8a909b" stroke-width="2.5"/></svg>';
+  $('tree').innerHTML = [[0, FOLD, 'factorial/'], [1, FIL, 'Cargo.toml'], [1, FOLD, 'src/'], [2, FIL, 'main.rs']]
+    .map((t, i) => '<div id="tr' + i + '" style="padding-left:' + t[0] * 34 + 'px">' + t[1] + t[2] + '</div>').join('');
+  const FR = ['main', 'factorial(5)', 'factorial(4)', 'factorial(3)', 'factorial(2)', 'factorial(1)'];
+  const RVAL = [null, '120', '24', '6', '2', '1'];
+  $('frames').innerHTML = FR.map((f, i) => '<div class="frm' + (i ? '' : ' main') + '" id="fr' + i + '" style="top:' + (32 + i * 35) + 'px">' + f + '</div><div class="rv" id="rv' + i + '" style="top:' + (36 + i * 35) + 'px">' + (RVAL[i] ? '→ ' + RVAL[i] : '') + '</div>').join('');
+
+  /* ---------- Zeichnen ---------- */
+  let timers = [], busy = false, target = null;
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const stop = () => { timers.forEach(clearTimeout); timers = []; };
+  const VLS = ['goal', 'tree', 'lock', 'belt', 'mach', 'res', 'stack', 'dial', 'book'];
+
+  function draw(st, anim) {
+    stage.classList.toggle('noanim', !anim);
+    /* Editor */
+    const ver = V[st.code] || [], base = V[st.base] || ver;
+    $('ed').style.opacity = st.code ? 1 : 0.35;
+    let k = 0;
+    Object.keys(L).forEach(id => {
+      const el = $('el-' + id), i = ver.indexOf(id), vis = i >= 0;
+      if (vis) el.style.top = (4 + i * 17.4) + 'px';
+      const isNew = vis && !base.includes(id);
+      el.style.transitionDelay = anim && isNew && el.dataset.v !== '1' ? (0.3 + (k++) * 0.18) + 's' : '0s';
+      el.style.opacity = vis ? 1 : 0;
+      el.dataset.v = vis ? '1' : '';
+      el.classList.toggle('new', isNew);
+      el.classList.toggle('bad', st.err === id);
+      el.innerHTML = lineHtml(id, st.sq, st.fx);
+    });
+    for (let i = 0; i < 19; i++) $('ln' + i).style.opacity = i < ver.length ? 1 : 0;
+
+    /* Karte */
+    const c = CARD[st.card];
+    if (c) { $('cardh').textContent = c[0]; $('cardt').textContent = c[1]; }
+    $('card').classList.toggle('on', !!c);
+    $('card').style.transitionDelay = anim && c ? (st.cardDelay || 1.2) + 's' : '0s';
+
+    /* Bildfläche */
+    VLS.forEach(v => $('v-' + v).classList.toggle('off', st.vz !== v));
+    $('book').classList.toggle('off', !st.book);
+    $('fin').classList.toggle('off', !st.fin);
+    [...$('fin').querySelectorAll('.fq')].forEach((e, i) => { e.classList.toggle('on', !!st.fq); e.style.transitionDelay = anim && st.fq && !st._pfq ? (0.2 + i * 0.4) + 's' : '0s'; });
+
+    /* Ordner */
+    for (let i = 0; i < 4; i++) { const t = $('tr' + i); t.classList.toggle('on', st.vz === 'tree'); t.style.transitionDelay = anim ? (0.3 + i * 0.35) + 's' : '0s'; }
+
+    /* Schloss */
+    const open = !!st.lockOpen;
+    $('shackle').style.transform = open ? 'translate(-18px, -8px) rotate(-30deg)' : 'none';
+    $('lockbody').setAttribute('fill', open ? '#2f7d2f' : '#c0352b');
+    $('lockt').textContent = open ? 'let mut: darf sich ändern' : 'let: unveränderlich';
+    $('lockt').style.color = open ? 'var(--ok)' : 'var(--err)';
+
+    /* Förderband */
+    const typed = !!st.belt;
+    const chips = [['c5', 'k5', 332, 0], ['cN', 'kE', 382, 1]];
+    chips.forEach(([cid, kid, tx, n]) => {
+      const ch = $(cid);
+      if (typed && anim && ch.dataset.v !== '1') {
+        ch.style.transition = 'none'; ch.style.left = (n ? 121 : 38) + 'px'; ch.style.top = '68px'; ch.style.opacity = 0; void ch.offsetWidth; ch.style.transition = '';
+        const d = n * 1500;
+        later(d, () => $(kid).classList.add('press'));
+        later(d + 200, () => { $(kid).classList.remove('press'); ch.style.opacity = 1; ch.style.top = '114px'; });
+        later(d + 700, () => { ch.style.left = tx + 'px'; });
+        later(d + 1700, () => { ch.style.top = '188px'; });
+      } else {
+        $(kid).classList.remove('press');
+        ch.style.left = (typed ? tx : (n ? 121 : 38)) + 'px'; ch.style.top = typed ? '188px' : '68px'; ch.style.opacity = typed ? 1 : 0;
+      }
+      ch.dataset.v = typed ? '1' : '';
+    });
+    $('blen').style.opacity = typed ? 1 : 0; $('blen').style.transitionDelay = anim && typed ? '3.4s' : '0s';
+
+    /* Maschine */
+    const mm = st.mach || '';
+    $('cands').classList.toggle('on', mm === 'q');
+    $('mtype').classList.toggle('on', mm && mm !== 'q');
+    const out = $('mout');
+    out.className = 'mout' + (mm === 'fail' ? ' bad' : mm === 'trim' ? ' okv' : '');
+    out.textContent = mm === 'fail' ? 'Err' : mm === 'trim' ? '5' : '?';
+    out.style.transitionDelay = anim && (mm === 'fail' || mm === 'trim') ? (mm === 'trim' ? '2.6s' : '1.8s') : '0s';
+    const m5 = $('m5'), mN = $('mN'), sc = $('sciss'), X = $('mX');
+    const inMach = mm === 'fail' || mm === 'trim';
+    if (anim && inMach && st._pm !== mm) {
+      if (mm === 'fail') {
+        m5.style.transition = mN.style.transition = 'none';
+        m5.style.left = '22px'; mN.style.left = '72px'; m5.style.top = mN.style.top = '114px'; m5.style.opacity = mN.style.opacity = 1;
+        void m5.offsetWidth; m5.style.transition = mN.style.transition = '';
+        later(300, () => { m5.style.left = '196px'; m5.style.top = '200px'; });
+        later(800, () => { mN.style.left = '240px'; mN.style.top = '200px'; });
+        later(1400, () => X.classList.add('on'));
+      } else {
+        X.classList.remove('on');
+        m5.style.transition = mN.style.transition = 'none';
+        m5.style.left = '22px'; mN.style.left = '72px'; m5.style.top = mN.style.top = '114px'; m5.style.opacity = mN.style.opacity = 1; mN.style.transform = 'none';
+        sc.style.transition = 'none'; sc.style.left = '0px'; sc.style.top = '158px'; sc.style.opacity = 0;
+        void m5.offsetWidth; m5.style.transition = mN.style.transition = sc.style.transition = '';
+        later(200, () => { sc.style.opacity = 1; sc.style.left = '62px'; });
+        later(1100, () => { mN.style.top = '200px'; mN.style.opacity = 0; mN.style.transform = 'rotate(25deg)'; sc.style.opacity = 0; });
+        later(1700, () => { m5.style.left = '222px'; m5.style.top = '124px'; m5.style.opacity = 0; });
+      }
+    } else {
+      X.classList.toggle('on', mm === 'fail');
+      sc.style.opacity = 0;
+      if (mm === 'fail') { m5.style.left = '196px'; mN.style.left = '240px'; m5.style.top = mN.style.top = '200px'; m5.style.opacity = mN.style.opacity = 1; mN.style.transform = 'none'; }
+      else if (mm === 'trim') { m5.style.opacity = 0; mN.style.opacity = 0; }
+      else { m5.style.left = '22px'; mN.style.left = '72px'; m5.style.top = mN.style.top = '114px'; m5.style.opacity = mN.style.opacity = 1; mN.style.transform = 'none'; }
+    }
+
+    /* Paket */
+    const rs = st.res || '';
+    $('pkgA').classList.toggle('open', rs === 'okopen' || rs === 'err');
+    $('pkgA').style.opacity = 1;
+    $('pkgB').style.opacity = rs === 'err' ? 1 : 0.25;
+    $('pkgB').classList.toggle('open', rs === 'err');
+    $('pkgB').querySelector('.pkglid').style.transitionDelay = anim && rs === 'err' ? '0.6s' : '0s';
+    $('boom').classList.toggle('on', rs === 'err'); $('boom').style.transitionDelay = anim && rs === 'err' ? '1.3s' : '0s';
+
+    /* Stack */
+    const sk = st.stk || 0;
+    FR.forEach((f, i) => {
+      const fr = $('fr' + i), rv = $('rv' + i);
+      const on = i === 0 || sk >= 1;
+      const gone = sk >= 2 && i > 0;
+      fr.classList.toggle('on', on && !gone);
+      fr.style.transitionDelay = anim && sk === 1 ? (0.2 + i * 0.4) + 's' : anim && sk === 2 && i > 0 ? (0.6 + (5 - i) * 0.6) + 's' : '0s';
+      rv.classList.toggle('on', sk >= 2 && i > 0);
+      rv.style.transitionDelay = anim && sk === 2 ? ((5 - i) * 0.6) + 's' : '0s';
+    });
+
+    /* Zahlenkreis */
+    const ptr = $('dptr'), F20 = 0.13188788213547298 * 360, F21 = 2.7696455248449325 * 360;
+    const dl = st.dl || 0;
+    const ang = dl === 0 ? F20 : dl === 1 ? 360 : F21;
+    ptr.style.transition = anim && dl >= 1 ? 'transform ' + (dl === 1 ? 1.4 : 3.2) + 's ease-in-out' : 'none';
+    if (anim && dl === 2) { ptr.style.transition = 'none'; ptr.style.transform = 'rotate(' + F20 + 'deg)'; void ptr.getBoundingClientRect(); ptr.style.transition = 'transform 3.2s ease-in-out'; }
+    ptr.style.transform = 'rotate(' + ang + 'deg)';
+    $('dred').setAttribute('d', 'M140 25 A100 100 0 1 1 139.9 25'); $('dred').style.opacity = dl === 1 ? 1 : 0; $('dred').style.transition = 'opacity 0.4s'; $('dred').style.transitionDelay = anim && dl === 1 ? '1.4s' : '0s';
+    $('dv2').classList.toggle('on', dl >= 1); $('dv2').style.transitionDelay = anim && dl === 1 ? '0.2s' : '0s';
+    $('dv3').classList.toggle('on', dl === 2); $('dv3').style.transitionDelay = anim && dl === 2 ? '3.2s' : '0s';
+
+    term(st.term, anim);
+    if (!anim) { void stage.offsetWidth; stage.classList.remove('noanim'); }
+  }
+
+  /* ---------- Szenen ---------- */
+  const S = [
+    { dot: '1', act: 'Aufgabe 1 · Das Ziel', title: 'Fakultät in Rust', st0: { code: null, vz: 'goal', term: '', book: 1 }, beats: [
+      { say: 'Vorweg ein Tipp: Das offizielle Rust-Buch ist kostenlos, sehr gut lesbar und erklärt alles mit Beispielen. Wer Rust lernen oder von C umsteigen will, fängt am besten hier an.', title: 'Zum Weiterlernen: das Rust-Buch' },
+      { say: 'Aufgabe 1: Ein Programm liest eine Zahl von der Tastatur und gibt ihre Fakultät aus. 5! heißt 5 · 4 · 3 · 2 · 1, also 120.', set: { book: 0 }, with: true },
+      { say: 'Zuerst legen wir mit <code>cargo new</code> ein neues Projekt an. cargo erzeugt den Ordner, die Datei <code>Cargo.toml</code> und ein kleines Hallo-Welt-Programm.', set: { code: 'hello', base: 'none', vz: 'tree', term: 'new' }, ms: 2600, title: 'cargo new' },
+      { say: 'Unser Weg heute: Wir schreiben das Programm Stück für Stück. Wenn etwas nicht klappt, sagt uns der Compiler genau, was fehlt. <b>Er ist heute unser Lehrer.</b>', title: 'Der Compiler als Lehrer' }
+    ] },
+    { dot: '2', act: 'Aufgabe 1 · Eine Zeile lesen', title: 'Eine Zeile von der Tastatur lesen', st0: { code: 'hello', base: 'hello', vz: 'lock', term: '', lockOpen: 0 }, beats: [
+      { say: 'Die Eingabe soll in einen <code>String</code> namens <code>input</code>. <code>read_line</code> liest eine Zeile von der Tastatur und schreibt sie hinein.', set: { code: 'A', base: 'hello' }, with: true, title: 'Erster Versuch' },
+      { say: 'Wir übersetzen und starten mit <code>cargo run</code>.', set: { base: 'A', term: 'A', err: 'rl', sq: ['rl', '&mut input'], card: 'A' }, ms: 2400, title: 'Erster Versuch' },
+      { say: 'In Rust ist jede Variable zuerst <b>unveränderlich</b>. <code>read_line</code> will aber Zeichen in <code>input</code> hineinschreiben. Dafür leiht es sich <code>input</code> mit <code>&amp;mut</code> zum Ändern aus.', title: 'Was der Compiler meint' },
+      { say: 'Die Lösung schlägt der Compiler gleich selbst vor: <code>mut</code>. Damit darf sich <code>input</code> ändern.', set: { code: 'A2', base: 'A', err: null, sq: null, fx: ['li', 'mut '], card: null, lockOpen: 1 }, ms: 1400, title: 'let mut' },
+      { say: 'Was steht nach dem Einlesen eigentlich in <code>input</code>? Wir lassen es uns ausgeben. <code>{:?}</code> zeigt dabei auch unsichtbare Zeichen.', set: { code: 'B', base: 'A2', fx: null, vz: 'belt', belt: 0, term: '' }, ms: 1400, title: 'Was steht in input?' },
+      { say: 'Du startest das Programm, tippst <b>5</b> und drückst <b>Enter</b>.', set: { belt: 1, term: 'B' }, ms: 3600, title: 'Was steht in input?' },
+      { say: 'Im String stehen <b>zwei</b> Zeichen: die 5 und <code>\\n</code>, der Zeilenumbruch. Das Enter landet mit im String. Merk dir das, gleich wird es wichtig.', title: 'Was steht in input?' }
+    ] },
+    { dot: '3', act: 'Aufgabe 1 · Text wird Zahl', title: 'Aus Text wird eine Zahl', st0: { code: 'B', base: 'B', vz: 'mach', mach: '', term: '' }, beats: [
+      { say: 'Aus dem Text soll eine Zahl werden. Dafür gibt es <code>parse()</code>. Wir ersetzen die Ausgabe und übersetzen.', set: { code: 'C', term: 'C', err: 'n1', sq: ['n1', 'number'], card: 'C', mach: 'q' }, ms: 2400, title: 'parse(): Welcher Typ?' },
+      { say: '<code>parse()</code> kann Text in viele Typen umwandeln: u8, i32, u64, f64 und mehr. Woher soll der Compiler wissen, welchen wir wollen?', title: 'parse(): Welcher Typ?' },
+      { say: 'Wir sagen es ihm: <code>number</code> soll ein <code>u64</code> sein, eine Ganzzahl ohne Vorzeichen mit 64 Bit.', set: { code: 'D', base: 'C', err: null, sq: null, fx: ['n2', ': u64'], card: null, mach: 'u64' }, ms: 1400, title: 'parse(): Welcher Typ?' },
+      { say: 'Jetzt kompiliert es. Du startest und tippst wieder 5.', set: { base: 'D', fx: null, term: 'D', err: 'n2', mach: 'fail', _pm: 'u64', card: 'D', cardDelay: 2.6 }, ms: 3000, title: 'Panic bei der Eingabe 5' },
+      { say: 'Was ist passiert? Denk an eben: In <code>input</code> steht <code>5</code> <b>und</b> <code>\\n</code>. Der Zeilenumbruch ist keine Ziffer. Also ist der ganze Text keine Zahl.', title: 'Panic bei der Eingabe 5' },
+      { say: '<code>trim()</code> schneidet Leerzeichen und Zeilenumbrüche am Anfang und am Ende ab. Danach bleibt nur noch <code>5</code>.', set: { code: 'E', base: 'D', err: null, fx: ['n3', '.trim()'], card: null, mach: 'trim', _pm: 'fail', term: 'E' }, ms: 3200, title: 'trim(): das \\n abschneiden' },
+      { say: '<code>parse()</code> gibt die Zahl aber nicht direkt zurück, sondern ein <code>Result</code>: ein Paket mit einem von zwei Inhalten. <code>Ok</code> mit der Zahl oder <code>Err</code> mit dem Fehler.', set: { vz: 'res', res: '', fx: null }, with: true, title: 'Result: ein Paket' },
+      { say: '<code>unwrap()</code> öffnet das Paket. Steckt <code>Ok(5)</code> darin, bekommst du die 5.', set: { res: 'okopen' }, ms: 1400, title: 'Result: ein Paket' },
+      { say: 'Und wenn jemand <b>abc</b> eintippt? Dann steckt <code>Err</code> im Paket. <code>unwrap()</code> öffnet es und bricht das Programm ab: eine <b>Panic</b>.', set: { res: 'err', term: 'E2' }, ms: 2400, title: 'Result: ein Paket' },
+      { say: '<code>expect()</code> macht dasselbe wie <code>unwrap()</code>, zeigt aber deine eigene Meldung. Dann weiß der Nutzer, was er falsch gemacht hat.', set: { code: 'F', base: 'E', fx: ['n4b', '.expect("This is not an integer!")'], term: 'F' }, ms: 2400, title: 'expect(): eine eigene Meldung' }
+    ] },
+    { dot: '4', act: 'Aufgabe 1 · Die Rechnung', title: 'Die Fakultät berechnen', st0: { code: 'F', base: 'F', vz: 'stack', stk: 0, term: '' }, beats: [
+      { say: 'Jetzt fehlt nur noch die Rechnung. Wir schreiben die Funktion <code>factorial</code> über <code>main</code> und rufen sie auf.', set: { code: 'G', base: 'F' }, ms: 2800, title: 'Die Funktion factorial' },
+      { say: 'Ganz einfach mit <code>if</code>: Ist <code>num</code> höchstens 1, ist das Ergebnis 1. Sonst rechnet die Funktion <code>num * factorial(num - 1)</code>.', set: { base: 'G' }, with: true, title: 'Die Funktion factorial' },
+      { say: 'Es steht kein <code>return</code> da und kein Semikolon hinter <code>1</code> und hinter <code>num * factorial(num - 1)</code>. Der Wert des <code>if</code> ist direkt der Rückgabewert der Funktion.', title: 'Die Funktion factorial' },
+      { say: 'Was passiert bei <code>factorial(5)</code>? Die Funktion ruft sich selbst auf, jedes Mal mit einer kleineren Zahl. Jeder Aufruf bekommt einen eigenen Rahmen auf dem Stack.', set: { stk: 1 }, ms: 2800, title: 'Rekursion' },
+      { say: '<code>factorial(1)</code> ist der Basisfall und gibt sofort 1 zurück. Dann gibt jeder Aufruf sein Ergebnis an den darüber zurück und verschwindet.', set: { stk: 2 }, ms: 3800, title: 'Rekursion' },
+      { say: 'Ausprobieren mit 5.', set: { term: 'G' }, ms: 1800, title: 'Rekursion' }
+    ] },
+    { dot: '5', act: 'Aufgabe 1 · Grenzen', title: 'Wie groß darf die Zahl sein?', st0: { code: 'G', base: 'G', vz: 'dial', dl: 0, term: '' }, beats: [
+      { say: '20! ist 2432902008176640000. Das passt noch in einen <code>u64</code>.', set: { term: 'G20' }, ms: 1800, title: '20! passt noch' },
+      { say: 'Ein <code>u64</code> hat 64 Bit. Die größte Zahl ist 2<sup>64</sup> − 1, etwa 1,8 · 10<sup>19</sup>. Stell dir die Zahlen als Kreis vor: Nach der größten kommt wieder die 0.', title: '20! passt noch' },
+      { say: '21! ist 21-mal so groß, etwa 5,1 · 10<sup>19</sup>. Bei <code>cargo run</code> prüft Rust jede Rechnung auf Überlauf. Du tippst 21.', set: { dl: 1, term: 'H' }, ms: 3000, title: '21! läuft über' },
+      { say: '<b>attempt to multiply with overflow</b>: Das Ergebnis passt nicht in 64 Bit. Rust bricht lieber ab, als mit einer falschen Zahl weiterzurechnen.', title: '21! läuft über' },
+      { say: 'Mit <code>cargo run --release</code> baut cargo das Programm schneller und prüft dafür nicht mehr auf Überlauf.', set: { dl: 2, term: 'I', card: null }, ms: 4000, title: 'Im Release-Modus' },
+      { say: 'Kein Fehler, aber ein falsches Ergebnis: Der Zeiger ist fast dreimal im Kreis gelaufen. Deshalb sagt die Musterlösung: Das Programm schafft nur bis 20!.', title: 'Im Release-Modus' }
+    ] },
+    { dot: '6', act: 'Aufgabe 1 · Zum Weiterlernen', title: 'Zum Weiterlernen: das Rust-Buch', st0: { code: 'G', base: 'G', vz: 'dial', dl: 2, term: 'I', fin: 1, fq: 1 }, beats: [
+      { say: 'Lies das offizielle Rust-Buch unbedingt: kostenlos, sehr angenehm zu lesen, alles Schritt für Schritt erklärt. Für den Anfang reichen die Kapitel 1 bis 4. Probier die Beispiele selbst aus.' }
+    ] }
+  ];
+
+  function expand(sc) {
+    const steps = []; let st = { ...sc.st0 };
+    sc.beats.forEach(b => {
+      const t = b.title || sc.title;
+      if (b.set) {
+        const nx = { ...st, ...b.set };
+        if (!b.with) steps.push({ say: b.say, title: t, st: { ...st } });
+        steps.push({ say: b.say, title: t, st: nx, play: true, with: !!b.with, ms: b.ms });
+        st = nx;
+      } else steps.push({ say: b.say, title: t, st: { ...st } });
+    });
+    return steps;
+  }
+
+  /* ---------- Schritt-Engine (wie KGÜ 5) ---------- */
+  let cur = 0, k = 0, steps = [], scene = null;
+  const dots = $('dots');
+  S.forEach((s, i) => { const d = document.createElement('button'); d.className = 'dot'; d.textContent = s.dot; d.title = s.title; d.onclick = () => show(i); dots.appendChild(d); });
+  const endPlay = () => { busy = false; ui(); };
+  function hard(st) {
+    shown = [];
+    Object.keys(L).forEach(id => { $('el-' + id).dataset.v = ''; });
+    ['c5', 'cN'].forEach(c => { $(c).dataset.v = ''; });
+    draw(st, false);
+  }
+  function finish() { stop(); busy = false; hard(target); ui(); }
+  function play(st, ms) { busy = true; target = st; ui(); draw(st, true); later(ms || 1500, endPlay); }
+  function ui() {
+    const nx = steps[k + 1];
+    const isPlay = nx && nx.play && !nx.with;
+    $('next').textContent = busy ? 'läuft …' : isPlay ? 'Zeigen →' : 'Weiter →';
+    $('next').classList.toggle('play', !busy && !!isPlay);
+    $('next').disabled = !busy && !nx && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && k === 0;
+    $('cnt').textContent = 'Schritt ' + (k + 1) + ' / ' + steps.length;
+    $('again').disabled = !busy && lastPlay() < 0;
+  }
+  function go(j, anim) {
+    const s = steps[j]; k = j;
+    $('say').innerHTML = s.say; $('ttl').textContent = s.title;
+    stop(); busy = false; target = s.st;
+    if (anim && s.play) play(s.st, s.ms); else hard(s.st);
+    ui();
+  }
+  function show(i, last) {
+    stop(); busy = false; cur = i; scene = S[i]; steps = expand(scene);
+    $('act').textContent = scene.act;
+    [...dots.children].forEach((d, n) => { if (n === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    k = 0; go(last ? steps.length - 1 : 0, false);
+  }
+  function lastPlay() { for (let j = k; j >= 0; j--) if (steps[j].play) return j; return -1; }
+  function again() {
+    const j = lastPlay(); if (j < 0) return;
+    stop(); busy = false;
+    const before = j > 0 ? steps[j - 1].st : scene.st0;
+    hard(before);
+    void stage.offsetWidth;
+    play(steps[j].st, steps[j].ms);
+  }
+  function next() {
+    if (busy) return finish();
+    if (k < steps.length - 1) go(k + 1, true); else if (cur < S.length - 1) show(cur + 1);
+  }
+  function prev() {
+    if (busy) finish();
+    if (k > 0) go(k - 1, false); else if (cur > 0) show(cur - 1, true);
+  }
+  $('again').onclick = again; $('next').onclick = next; $('prev').onclick = prev; $('replay').onclick = () => show(cur);
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'w' || e.key === 'W') again();
+    else if (e.key === 'r' || e.key === 'R') show(cur);
+  });
+
+  function fit() {
+    const w = box.clientWidth, s = Math.max(0.5, Math.min(w / 1000, (window.innerHeight - 250) / 380, 1.6));
+    stage.style.transform = 'scale(' + s + ')'; stage.style.left = (w - 1000 * s) / 2 + 'px'; box.style.height = 380 * s + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.__go = (i, j) => { show(i); if (j) go(Math.min(j, steps.length - 1), false); };
+  fit(); show(0);
+})();
+</script>
+</body>
+</html>

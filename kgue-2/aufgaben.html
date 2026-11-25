@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGÜ 2 · Aufgaben</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Wie KGÜ-2_Stack.html und die KGÜ-5-Seiten: bewusst nur hell (Beamer). Bühne 1000×380, darunter Titel und Text.
+   Regel: erst Text, Animation erst nach Klick. Keine Emoji.
+   Die offizielle Lösung (kgloesung02) läuft in einem kleinen Simulator: Jeder Zustand wird ausgerechnet, nicht von Hand eingetippt.
+   Links der Code (rip-Pfeil = nächster Befehl), Mitte die CPU als Chip mit Registern und Vergleichsanzeige, rechts der RAM mit .data und Stack. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f1f2f5;
+  --warn: #c2410c; --hl: #fff1a8; --ptr: #ffd400; --cand: #2f5fb8; --rip: #7a4fd0;
+  --chip: #2b303b; --chip2: #4a5163; --pin: #8a909c;
+  --pcb: #2e6b3d; --pcb2: #1f4d2b; --gold: #c9a227;
+  --main: #e3ecfb; --main-b: #2f5fb8;
+  --ret: #fde8d7; --ret-b: #c2410c; --save: #dff1f4; --save-b: #0e7490;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 10px 16px 10px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 24px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.top .act { color: var(--fg); }
+/* Zusatzaufgabe e: deutlicher Hinweis oben links statt der normalen Überschrift */
+/* Einblendung beim Öffnen von e1/e2: groß in der Mitte, Hintergrund verschwommen, dann fliegt sie nach oben links */
+.xintro { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(22,24,29,0.38); -webkit-backdrop-filter: blur(5px) grayscale(0.6); backdrop-filter: blur(5px) grayscale(0.6); animation: xbg 1.25s ease forwards; cursor: pointer; }
+.xintro .card { padding: 26px 44px; border: 4px solid var(--warn); border-radius: 22px; background: #ffe1d1; color: var(--warn); text-align: center; box-shadow: 0 18px 50px rgba(0,0,0,0.35); animation: xcard 1.25s cubic-bezier(.3,1.3,.5,1) forwards; transform-origin: center; }
+.xintro .card b { display: block; font-size: 48px; line-height: 1.1; }
+.xintro .card span { display: block; margin-top: 10px; font-size: 24px; font-weight: 600; color: #8a2e08; }
+@keyframes xbg { 0% { opacity: 0; } 12% { opacity: 1; } 72% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes xcard { 0% { transform: scale(0.6); opacity: 0; } 14% { transform: scale(1.04); opacity: 1; } 22% { transform: scale(1); } 70% { transform: scale(1); opacity: 1; } 100% { transform: translate(-36vw, -40vh) scale(0.3); opacity: 0; } }
+.xwarn { display: inline-flex; align-items: center; gap: 8px; padding: 3px 12px; border: 2.5px solid var(--warn); border-radius: 9px; background: #ffe1d1; color: var(--warn); font-size: 17px; font-weight: 700; text-transform: none; letter-spacing: 0; white-space: nowrap; }
+/* Legende oben: Gelb = eben passiert, Lila (rip) = passiert als Nächstes */
+.legend { display: flex; align-items: center; gap: 14px; font-size: 18px; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--fg); }
+.legend > span { display: inline-flex; align-items: center; gap: 9px; padding: 3px 12px; border: 2px solid var(--fg); border-radius: 9px; background: #fff; white-space: nowrap; }
+#cnt { white-space: nowrap; }
+.legend .sw { width: 34px; height: 20px; background: var(--hl); border: 2px solid #e0c200; border-radius: 4px; }
+.legend .tri { width: 0; height: 0; border-left: 17px solid var(--rip); border-top: 10px solid transparent; border-bottom: 10px solid transparent; }
+.top:has(.legend:not([hidden])) { height: 40px; align-items: center; }
+.legend .rp { color: var(--rip); }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--cand); outline-offset: 2px; }
+code, .mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 0 0; }
+.stage.noanim, .stage.noanim * { transition: none !important; animation: none !important; }
+
+/* ---------- Code ---------- */
+#code { position: absolute; left: 6px; top: 4px; width: 330px; height: 372px; border: 2px solid var(--fg); border-radius: 12px; overflow: hidden; background: #fff; }
+#cline { position: relative; z-index: 2; height: 36px; border-bottom: 2px solid var(--fg); background: var(--soft); padding: 0 12px; display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 15.5px; font-weight: 600; white-space: nowrap; font-variant-ligatures: none; overflow: hidden; }
+#cline small { font-family: var(--font-body); font-size: 12px; letter-spacing: 0.07em; color: var(--muted); }
+.listing { position: absolute; left: 0; right: 0; top: 38px; bottom: 0; overflow: hidden; transition: opacity 0.5s; }
+.listing.off { opacity: 0; pointer-events: none; }
+.lsc { position: absolute; left: 0; right: 0; top: 2px; transition: transform 0.5s ease-in-out; }
+.ln { position: relative; height: 18.6px; line-height: 18.6px; padding-left: 64px; font-family: var(--font-mono); font-size: 14.5px; white-space: pre; font-variant-ligatures: none; transition: background 0.3s; }
+.ln .ad { position: absolute; left: 22px; width: 38px; color: var(--muted); font-size: 12px; }
+.ln .cm { color: var(--muted); }
+.ln.lab { font-weight: 600; padding-left: 26px; }
+.ln.decl { color: var(--muted); padding-left: 26px; }
+.ln.decl b { color: var(--fg); font-weight: 600; }
+.ln.on { background: var(--hl); }
+.rarrow { position: absolute; left: 4px; width: 0; height: 0; border-left: 13px solid var(--rip); border-top: 7.5px solid transparent; border-bottom: 7.5px solid transparent; transition: top 0.4s, opacity 0.3s; }
+
+/* ---------- CPU als Chip ---------- */
+.cpu { position: absolute; left: 380px; top: 22px; width: 224px; height: 338px; background: var(--chip); border: 3px solid var(--fg); border-radius: 16px; }
+.cpu::before { content: ""; position: absolute; inset: 8px; border: 1.5px solid #555c6c; border-radius: 10px; }
+.cpu .name { position: absolute; left: 16px; top: 12px; color: #fff; font-family: var(--font-mono); font-weight: 600; font-size: 15px; letter-spacing: 0.05em; }
+.pin { position: absolute; background: repeating-linear-gradient(var(--dir, 0deg), var(--pin) 0 7px, transparent 7px 17px); }
+.pin.l, .pin.r { top: 26px; bottom: 26px; width: 11px; }
+.pin.l { left: -14px; } .pin.r { right: -14px; }
+.pin.t, .pin.b { left: 26px; right: 26px; height: 11px; --dir: 90deg; }
+.pin.t { top: -14px; } .pin.b { bottom: -14px; }
+#regs { position: absolute; left: 18px; right: 18px; top: 42px; }
+.reg { display: flex; align-items: center; height: 36px; margin-bottom: 6px; }
+.reg .n { width: 46px; font-family: var(--font-mono); font-weight: 600; font-size: 15px; color: var(--ptr); }
+.reg .n.rip { color: #c9b3ff; }
+.reg .v { flex: 1; height: 34px; border-radius: 7px; background: #fff; border: 2px solid var(--pin); font-family: var(--font-mono); font-weight: 600; font-size: 17px; line-height: 30px; text-align: right; padding: 0 9px; transition: background 0.3s, border-color 0.3s; white-space: nowrap; overflow: hidden;  font-variant-ligatures: none; }
+.reg .v.hot { background: var(--ptr); border-color: var(--fg); }
+/* Ergebnis des letzten cmp: vereinfacht als kleiner / gleich / größer (in echt: Flag-Bits im Register rflags) */
+.cmpflags { position: absolute; right: 16px; top: 9px; display: flex; align-items: center; gap: 4px; }
+.cmpflags small { font-family: var(--font-mono); font-size: 11px; color: #c9ced8; letter-spacing: 0.06em; margin-right: 3px; font-weight: 600; }
+.fl { width: 27px; height: 22px; border-radius: 5px; background: var(--chip2); border: 1.5px solid var(--pin); color: #c9ced8; font-family: var(--font-mono); font-weight: 600; font-size: 14px; line-height: 19px; text-align: center; transition: background 0.3s, color 0.3s, box-shadow 0.3s; }
+.fl.lit { background: var(--ptr); color: var(--fg); border-color: var(--fg); }
+.cmpflags.hot .fl.lit { box-shadow: 0 0 0 3px #fff; }
+.alu { position: absolute; left: 50%; bottom: 16px; width: 170px; height: 68px; margin-left: -85px; }
+.alu svg { position: absolute; inset: 0; overflow: visible; }
+.alu b { position: absolute; left: -20px; right: -20px; top: 42px; text-align: center; font-family: var(--font-mono); font-size: 15px; color: #fff; white-space: nowrap;  font-variant-ligatures: none; }
+.alu small { position: absolute; left: 0; right: 0; top: 18px; text-align: center; font-family: var(--font-mono); font-size: 16px; letter-spacing: 0.1em; color: #e1e4ea; font-weight: 600; }
+.alu.on polygon { fill: #6b5a1a; stroke: var(--ptr); }
+.alu polygon { transition: fill 0.3s, stroke 0.3s; }
+.bus { position: absolute; height: 22px; display: flex; flex-direction: column; justify-content: space-between; }
+.bus i { display: block; height: 3px; background: var(--pin); border-radius: 2px; }
+
+/* ---------- RAM ---------- */
+#ramstick, #zoom { display: none; }
+/* der ganze C-Code oben rechts; gelb = die C-Zeile, zu der der eben ausgeführte Befehl gehört */
+.cbox { position: absolute; left: 648px; top: 4px; width: 346px; border: 2px solid var(--fg); border-radius: 12px; background: #fff; overflow: hidden; }
+.cbox.off { display: none; }
+.cbox .hd { height: 24px; line-height: 22px; padding: 0 10px; background: var(--soft); border-bottom: 2px solid var(--fg); font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.cbox .cl { height: 17px; line-height: 17px; padding: 0 10px; font-family: var(--font-mono); font-size: 13.5px; white-space: pre; font-variant-ligatures: none; transition: background 0.3s; }
+.cbox .cl.on { background: var(--hl); }
+.cbox .cl .cm { color: var(--muted); }
+.cnote { height: 30px; line-height: 28px; padding: 0 10px; background: #ffe1d1; border-top: 2px solid var(--warn); color: var(--warn); font-size: 15px; font-weight: 700; }
+#mem { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; pointer-events: none; }
+.adr { position: absolute; left: 700px; width: 44px; text-align: right; font-family: var(--font-mono); font-size: 13.5px; color: var(--muted); }
+.cell { position: absolute; left: 750px; width: 196px; border: 2px solid var(--line); background: #fff; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; font-family: var(--font-mono); font-size: 14.5px; font-weight: 600; transition: background 0.35s, border-color 0.35s, color 0.35s;  font-variant-ligatures: none; }
+.cell small { font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.cell.dat { background: var(--main); border-color: var(--main-b); }
+.cell.ret { background: var(--ret); border-color: var(--ret-b); }
+.cell.save { background: var(--save); border-color: var(--save-b); }
+/* mit push auf den Stack gelegte Werte: eigene Farbe (grün), damit man sofort sieht, was neu dazugekommen ist */
+.cell.val { background: #e4f4d8; border-color: #3f7d1c; color: #24520c; }
+.cell.val small { color: #3f7d1c; font-weight: 600; }
+.cell.stale { background: repeating-linear-gradient(135deg, #f3f4f6 0 6px, #e5e7eb 6px 12px); border-color: var(--line); color: #9aa0aa; }
+.cell.stale small { color: #9aa0aa; }
+.cell.hot { box-shadow: inset 0 0 0 3px var(--ptr); }
+.cell.read { box-shadow: inset 0 0 0 3px var(--cand); }
+.gap { position: absolute; left: 750px; width: 196px; text-align: center; font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+.mptr { position: absolute; font-family: var(--font-mono); font-weight: 600; font-size: 15px; white-space: nowrap; transition: top 0.4s, opacity 0.3s; }
+#p-rsp { left: 952px; }
+#p-rbp { left: 648px; color: var(--save-b); }
+.grow { position: absolute; left: 744px; width: 256px; font-size: 12px; color: var(--muted); text-align: center; letter-spacing: 0.05em; }
+
+/* fliegende Werte */
+#fx { position: absolute; inset: 0; pointer-events: none; }
+/* rip zeigt auf den nächsten Befehl: lila Zeiger vom rip-Register zur Zeile (wie auf der NASM-Seite) */
+#rptr { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; overflow: visible; pointer-events: none; transition: opacity 0.3s; }
+#rptrp { fill: none; stroke: var(--rip); stroke-width: 3; stroke-linejoin: round; }
+#rptr marker path { fill: var(--rip); stroke: none; }
+.ln .ad.src { color: var(--rip); font-weight: 600; background: #ece4ff; border-radius: 3px; }
+.fly { position: absolute; transform: translate(-50%, -50%); background: var(--ptr); border: 2px solid var(--fg); border-radius: 8px; padding: 2px 9px; font-family: var(--font-mono); font-weight: 600; font-size: 16px; white-space: nowrap; transition-property: left, top; transition-timing-function: ease-in-out; z-index: 9; box-shadow: 0 3px 8px rgba(0,0,0,0.25);  font-variant-ligatures: none; }
+.fly.ripc { background: #ece4ff; border-color: var(--rip); }
+
+/* Unterteil */
+.cap { margin-top: 8px; min-height: 118px; }
+.cap h1 { font-size: 24px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.cap p { margin: 0; font-size: 21px; line-height: 1.35; max-width: 86ch; }
+.cap code { font-size: 0.92em; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot { min-width: 30px; height: 30px; padding: 0 6px; border-radius: 15px; border-color: var(--line); font-family: var(--font-mono); font-size: 14px; }
+.dot[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#next { min-width: 170px; background: var(--fg); color: var(--bg); margin-left: auto; }
+#next.play { background: var(--ptr); color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="act" id="act"></span><span class="legend" id="legend"><span><i class="sw"></i>gelb = eben passiert</span><span><i class="tri"></i><b class="rp">rip</b> = kommt als Nächstes</span></span><span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+      <div id="code"><div id="cline"></div></div>
+
+      <div class="bus" style="left:338px;top:178px;width:42px"><i></i><i></i><i></i></div>
+      <div class="bus" style="left:604px;top:178px;width:44px"><i></i><i></i><i></i></div>
+
+      <div class="cpu" id="cpu">
+        <div class="pin l"></div><div class="pin r"></div><div class="pin t"></div><div class="pin b"></div>
+        <div class="name">CPU</div>
+        <div class="cmpflags" id="flg"><small>cmp</small><span class="fl" id="fl-lt">&lt;</span><span class="fl" id="fl-eq">=</span><span class="fl" id="fl-gt">&gt;</span></div>
+        <div id="regs"></div>
+        <div class="alu" id="alu">
+          <svg viewBox="0 0 170 68"><polygon points="0,0 70,0 85,14 100,0 170,0 134,68 36,68" fill="var(--chip2)" stroke="var(--pin)" stroke-width="2" stroke-linejoin="round"/></svg>
+          <small>ALU</small><b id="alu-op"></b>
+        </div>
+      </div>
+
+      <svg id="ramstick" viewBox="0 0 346 64" aria-hidden="true"></svg>
+      <svg id="zoom" viewBox="0 0 360 100" aria-hidden="true"></svg>
+      <div id="mem"></div>
+      <svg id="rptr"><defs><marker id="rph" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0L10 5L0 10z"/></marker></defs><path id="rptrp" marker-end="url(#rph)"/></svg>
+      <div id="fx"></div>
+    </div>
+  </div>
+  <div class="cap"><h1 id="ttl"></h1><p id="say"></p></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Zurück">←</button>
+    <span id="dots" style="display:flex;gap:6px"></span>
+    <button id="replay" aria-label="Teil neu starten" title="Teil neu starten (R)">↺</button>
+    <button id="next">Weiter →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), box = $('box'), fx = $('fx');
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const clone = o => JSON.parse(JSON.stringify(o));
+
+  /* ---------- RAM-Riegel (Zeichnung) mit Lupe auf einen Chip ---------- */
+  (function drawStick() {
+    let h = '<path d="M4 6 H342 V52 H186 V46 H176 V52 H4 Z" fill="var(--pcb)" stroke="var(--pcb2)" stroke-width="2.5"/>';
+    for (let k = 0; k < 8; k++) h += '<rect x="' + (14 + k * 41) + '" y="12" width="33" height="26" rx="2" fill="var(--chip)"/>';
+    for (let x = 10; x < 338; x += 6) { if (x > 172 && x < 190) continue; h += '<rect x="' + x + '" y="44" width="3.5" height="8" fill="var(--gold)"/>'; }
+    h += '<rect x="' + (14 + 5 * 41 - 3) + '" y="9" width="39" height="32" rx="3" fill="none" stroke="var(--ptr)" stroke-width="2.5"/>';
+    $('ramstick').innerHTML = h;
+    const cx0 = 8 + 14 + 5 * 41 - 3, cx1 = cx0 + 39;
+    $('zoom').innerHTML = '<path d="M' + cx0 + ' 41 L110 80 M' + cx1 + ' 41 L306 80" stroke="var(--ptr)" stroke-width="2" stroke-dasharray="5 4" fill="none"/>';
+  })();
+
+  /* ---------- Die offizielle Lösung (kgloesung02), Zeile für Zeile. Nach " | " steht die passende C-Zeile (nur für die Anzeige oben). ---------- */
+  const SRC = {
+    aif: `DEFAULT REL
+SECTION .data
+i DD 40
+j DD 45
+k DD 10
+SECTION .text
+global main
+main:
+; if (i > 42) k = 0;
+; else if (j > 42) k = 1;
+; else k = 2;
+    cmp dword [i], 42 | if (i > 42)
+    jle naechste | if (i > 42)
+    mov dword [k], 0 | k = 0;
+    jmp ende | k = 0;
+naechste:
+    cmp dword [j], 42 | else if (j > 42)
+    jle letzte | else if (j > 42)
+    mov dword [k], 1 | k = 1;
+    jmp ende | k = 1;
+letzte:
+    mov dword [k], 2 | else k = 2;
+ende:
+    mov rax, 0 | return 0;
+    ret | return 0;`,
+    afor: `DEFAULT REL
+SECTION .data
+summe DD 0
+SECTION .text
+global main
+main:
+; int summe = 0;
+; for (int i = 1; i <= 3; i++) {
+;     summe += i;
+; }
+    mov ecx, 1          ; i = 1 | for (int i = 1; …)
+schleife:
+    cmp ecx, 3 | i <= 3
+    jg ende             ; umgedreht! | i <= 3
+    add dword [summe], ecx | summe += i;
+    inc ecx | i++
+    jmp schleife | for (…)
+ende:
+    mov rax, 0 | return 0;
+    ret | return 0;`,
+    b: `DEFAULT REL
+SECTION .data
+N DD 5
+SECTION .text
+global main
+main:
+    mov eax, 0 | int q = 0;
+    mov ecx, 1 | int i = 1;
+schleife:
+    cmp ecx, dword [N] | i <= N
+    jg ende | i <= N
+    mov eax, ecx | q = i * i;
+    imul eax, eax | q = i * i;
+    inc ecx | i++
+    jmp schleife | for (…)
+ende:
+    mov rax, 0 | return 0;
+    ret | return 0;`,
+    c: `DEFAULT REL
+SECTION .data
+N DD 5
+SECTION .text
+global main
+main:
+    mov eax, 0 | int summe = 0;
+    mov ecx, 1 | int i = 1;
+schleife:
+    cmp ecx, dword [N] | i <= N
+    jg ende | i <= N
+    mov edx, ecx | q = i * i;
+    imul edx, edx | q = i * i;
+    add eax, edx | summe += q;
+    inc ecx | i++
+    jmp schleife | for (…)
+ende:
+    mov rax, 0 | return 0;
+    ret | return 0;`,
+    d: `DEFAULT REL
+SECTION .data
+N DQ 5
+SECTION .text
+global main
+main:
+    mov rax, 0 | long summe = 0;
+    mov rcx, 1 | long i = 1;
+; Quadratzahlen werden gebildet und auf den Stack gelegt
+L1:
+    cmp rcx, qword [N] | i <= N
+    jg E1 | i <= N
+    mov rax, rcx | push(i * i);
+    imul rax, rax | push(i * i);
+    push rax | push(i * i);
+    inc rcx | i++
+    jmp L1 | for (…)
+E1:
+    mov rax, 0 | summe = 0;
+    mov rcx, 1 | i = 1;
+; Quadratzahlen werden aufsummiert
+L2:
+    cmp rcx, qword [N] | i <= N
+    jg E2 | i <= N
+    pop rdx | summe += pop();
+    add rax, rdx | summe += pop();
+    inc rcx | i++
+    jmp L2 | for (…)
+E2:
+    mov rax, 0 | return 0;
+    ret | return 0;`,
+    e: `DEFAULT REL
+SECTION .data
+Ergebnis DQ 0
+N DQ 5
+SECTION .text
+global main
+main:
+    push rbp | Prolog
+    mov rbp, rsp        ; rbp und rsp haben nun den gleichen Wert | Prolog
+    mov rax, 0          ; rax fuer die Zwischenergebnisse | Ergebnis = 0
+    push qword [N]      ; Startargument auf den Stack | Aufgabe N auf den Stack
+anfang:
+    cmp rsp, rbp | Stack leer?
+    je ende             ; Stack leer -> fertig | Stack leer?
+    pop rbx | n = oberste Aufgabe
+    cmp rbx, 1 | n > 1 ?
+    jg weiter_pushen | n > 1 ?
+    cmp rbx, 0 | n == 0 ?
+    je anfang | n == 0 ?
+    inc rax | n == 1: Ergebnis + 1
+    jmp anfang | nächste Aufgabe
+weiter_pushen:
+    dec rbx | n - 1 auf den Stack
+    push rbx | n - 1 auf den Stack
+    dec rbx | n - 2 auf den Stack
+    push rbx | n - 2 auf den Stack
+    jmp anfang | nächste Aufgabe
+ende:
+    mov qword [Ergebnis], rax | Ergebnis speichern
+    pop rbp             ; Stack aufraeumen | Epilog
+    mov rax, 0 | return 0;
+    ret | return 0;`
+  };
+  // Der ganze C-Code pro Aufgabe (rechts oben) und für jeden Befehl die passende C-Zeile (Index, -1 = keine).
+  const CSRC = {
+    aif: ['int i = 40, j = 45, k = 10;', 'if (i > 42)', '    k = 0;', 'else if (j > 42)', '    k = 1;', 'else', '    k = 2;', 'return 0;'],
+    afor: ['int summe = 0;', 'for (int i = 1; i <= 3; i++) {', '    summe += i;', '}', 'return 0;'],
+    b: ['int N = 5;', 'int q = 0;', 'for (int i = 1; i <= N; i++) {', '    q = i * i;', '}', 'return 0;'],
+    c: ['int N = 5;', 'int summe = 0;', 'for (int i = 1; i <= N; i++) {', '    int q = i * i;', '    summe += q;', '}', 'return 0;'],
+    d: ['long N = 5, summe = 0;', 'for (long i = 1; i <= N; i++)', '    push(i * i);', 'summe = 0;', 'for (long i = 1; i <= N; i++)', '    summe += pop();', 'return 0;'],
+    e: ['long N = 5, Ergebnis = 0;', 'push(N);', 'while (Stack nicht leer) {', '    long n = pop();', '    if (n > 1) { push(n-1); push(n-2); }', '    else if (n == 1) Ergebnis++;', '}', 'return 0;']
+  };
+  const CMAP = {
+    aif: [1, 1, 2, 2, 3, 3, 4, 4, 6, 7, 7],
+    afor: [1, 1, 1, 2, 1, 1, 4, 4],
+    b: [1, 2, 2, 2, 3, 3, 2, 2, 5, 5],
+    c: [1, 2, 2, 2, 3, 3, 4, 2, 2, 6, 6],
+    d: [0, 1, 1, 1, 2, 2, 2, 1, 1, 3, 4, 4, 4, 5, 5, 4, 4, 6, 6],
+    e: [-1, -1, 0, 1, 2, 2, 3, 4, 4, 5, 5, 5, 2, 4, 4, 4, 4, 2, -1, -1, 7, 7]
+  };
+  // Offsets der Befehle im Maschinencode: nasm -f macho64 -O0, mit objdump ausgelesen. main liegt (vereinfacht) bei …400.
+  const OFF = {
+    aif: [0x0, 0xa, 0xc, 0x16, 0x1b, 0x25, 0x27, 0x31, 0x36, 0x40, 0x4a],
+    afor: [0x0, 0x5, 0xb, 0xd, 0x13, 0x15, 0x1a, 0x24],   // eigenes, kürzeres Beispiel (summe += i, i = 1 … 3), ebenfalls mit objdump geprüft
+    b: [0x0, 0x5, 0xa, 0x10, 0x12, 0x14, 0x17, 0x19, 0x1e, 0x28],
+    c: [0x0, 0x5, 0xa, 0x10, 0x12, 0x14, 0x17, 0x19, 0x1b, 0x20, 0x2a],
+    d: [0x0, 0xa, 0x14, 0x1b, 0x1d, 0x20, 0x24, 0x25, 0x28, 0x2d, 0x37, 0x41, 0x48, 0x4a, 0x4b, 0x4e, 0x51, 0x56, 0x60],
+    e: [0x0, 0x1, 0x4, 0xe, 0x14, 0x17, 0x19, 0x1a, 0x21, 0x23, 0x2a, 0x2c, 0x2f, 0x34, 0x37, 0x38, 0x3b, 0x3c, 0x41, 0x48, 0x49, 0x53]
+  };
+
+  /* ---------- Programme einlesen ---------- */
+  const REG32 = { eax: 'rax', ebx: 'rbx', ecx: 'rcx', edx: 'rdx' };
+  const REG64 = ['rax', 'rbx', 'rcx', 'rdx', 'rsp', 'rbp'];
+  const fam = x => REG32[x] || (REG64.includes(x) ? x : null);
+  const memName = x => { const m = /\[(\w+)\]/.exec(x); return m ? m[1] : null; };
+  const isImm = x => /^-?\d+$/.test(x);
+  const STACK_TOP = 8000, DATA = 2000, RBP_START = 8048;
+
+  function parse(id, src, over) {
+    const lines = [], labels = {}, data = [];
+    let n = 0, addr = DATA;
+    src.split('\n').forEach((raw, idx) => {
+      let [code, c] = raw.split(' | ');
+      const L = { idx, raw: code, c: c || '' };
+      const t = code.split(';')[0].trim();
+      if (code.trim().startsWith(';')) L.kind = 'comment';
+      else if (/^\w+:$/.test(t)) { L.kind = 'label'; L.label = t.slice(0, -1); labels[L.label] = idx; }
+      else if (/^(DEFAULT|SECTION|global)/.test(t)) L.kind = 'decl';
+      else if (/^\w+\s+(DD|DQ)\s+-?\d+$/.test(t)) {
+        const [, nm, sz, v] = /^(\w+)\s+(DD|DQ)\s+(-?\d+)$/.exec(t);
+        const val = over && nm in over ? over[nm] : +v;
+        if (over && nm in over) { L.raw = code.replace(/-?\d+$/, String(val)); }
+        L.kind = 'data'; data.push({ name: nm, size: sz === 'DQ' ? 8 : 4, v: val, a: addr }); addr += sz === 'DQ' ? 8 : 4;
+      } else {
+        const m = /^(\w+)\s*(.*)$/.exec(t);
+        L.kind = 'ins'; L.op = m[1]; L.args = m[2] ? m[2].split(/,\s*/) : []; L.text = t;
+        L.ci = CMAP[id][n]; L.ad = (0x400 + OFF[id][n++]).toString(16);
+      }
+      lines.push(L);
+    });
+    return { lines, labels, data };
+  }
+
+  /* ---------- Mini-Simulator ---------- */
+  function newMachine(p) {
+    const m = { regs: { rax: null, rbx: null, rcx: null, rdx: null, rsp: STACK_TOP, rbp: RBP_START }, mem: {}, stack: {}, cmp: null, pc: 0, done: false };
+    p.data.forEach(d => { m.mem[d.name] = d.v; });
+    m.stack[STACK_TOP] = ['Rücksprung: Start', 'ret', ''];
+    m.pc = nextIns(p, 0);
+    return m;
+  }
+  function nextIns(p, i) { while (i < p.lines.length && p.lines[i].kind !== 'ins') i++; return i; }
+  const REL = { lt: 'kleiner', eq: 'gleich', gt: 'größer' };
+  const JMP = { jmp: [null, () => true], jle: ['kleiner oder gleich', r => r !== 'gt'], jl: ['kleiner', r => r === 'lt'],
+    jg: ['größer', r => r === 'gt'], jge: ['größer oder gleich', r => r !== 'lt'], je: ['gleich', r => r === 'eq'] };
+
+  function step(p, m) {
+    const L = p.lines[m.pc], ev = { line: L.idx, L, op: L.op, args: L.args, read: [], hot: [] };
+    const [A, B] = L.args;
+    const addrOf = nm => p.data.find(d => d.name === nm).a;
+    // Operand beschreiben: wo liegt er, welchen Wert hat er
+    const opd = x => {
+      if (fam(x)) return { t: 'reg', f: fam(x), name: x, v: m.regs[fam(x)], id: 'v-' + fam(x) };
+      if (memName(x)) { const nm = memName(x); return { t: 'mem', name: nm, v: m.mem[nm], a: addrOf(nm), id: 'cell-' + addrOf(nm), sz: /qword/.test(x) ? 8 : 4 }; }
+      return { t: 'imm', name: x, v: +x, id: 'ln-' + p.id + '-' + L.idx };
+    };
+    const put = (o, v) => {
+      if (o.t === 'reg') { m.regs[o.f] = v; ev.hot.push(o.f); }
+      else { m.mem[o.name] = v; ev.hot.push(o.a); }
+    };
+    let pc = nextIns(p, m.pc + 1);
+    switch (L.op) {
+      case 'mov': { const s = opd(B), d = opd(A); ev.src = s; ev.dst = d; if (s.t === 'mem') ev.read.push(s.a); put(d, s.v); ev.v = s.v; break; }
+      case 'add': case 'imul': case 'sub': {
+        const s = opd(B), d = opd(A); ev.src = s; ev.dst = d; ev.a = d.v; ev.b = s.v;
+        ev.r = L.op === 'add' ? d.v + s.v : L.op === 'sub' ? d.v - s.v : d.v * s.v;
+        if (s.t === 'mem') ev.read.push(s.a); if (d.t === 'mem') ev.read.push(d.a);
+        put(d, ev.r); break; }
+      case 'inc': case 'dec': { const d = opd(A); ev.dst = d; ev.a = d.v; ev.r = d.v + (L.op === 'inc' ? 1 : -1); put(d, ev.r); break; }
+      case 'cmp': {
+        const a = opd(A), b = opd(B); ev.src = b; ev.dst = a; ev.a = a.v; ev.b = b.v;
+        if (a.t === 'mem') ev.read.push(a.a); if (b.t === 'mem') ev.read.push(b.a);
+        ev.rel = a.v < b.v ? 'lt' : a.v > b.v ? 'gt' : 'eq'; m.cmp = ev.rel; break; }
+      case 'push': {
+        const s = opd(A); ev.src = s; if (s.t === 'mem') ev.read.push(s.a);
+        m.regs.rsp -= 8; ev.addr = m.regs.rsp;
+        m.stack[m.regs.rsp] = s.f === 'rbp' ? [String(s.v), 'save', 'rbp vom Start'] : [String(s.v), 'val', 'gepusht'];
+        ev.v = s.v; ev.hot.push('rsp', m.regs.rsp); break; }
+      case 'pop': {
+        const d = opd(A); ev.dst = d; ev.addr = m.regs.rsp;
+        const c = m.stack[m.regs.rsp]; ev.v = c[1] === 'save' || c[1] === 'val' || c[1] === 'stale' ? +c[0] : c[0];
+        m.stack[m.regs.rsp] = [c[0], 'stale', 'frei']; ev.read.push(ev.addr);
+        m.regs.rsp += 8; put(d, ev.v); ev.hot.push('rsp'); break; }
+      case 'ret': {
+        ev.addr = m.regs.rsp; const c = m.stack[m.regs.rsp]; ev.read.push(ev.addr);
+        m.stack[m.regs.rsp] = [c[0], 'stale', 'frei']; m.regs.rsp += 8; m.done = true; ev.rax = m.regs.rax; ev.hot.push('rsp', 'rip'); break; }
+      default: {
+        const J = JMP[L.op]; if (!J) throw new Error('unbekannter Befehl ' + L.op);
+        ev.cond = J[0]; ev.rel = m.cmp; ev.taken = J[1](m.cmp); ev.target = A;
+        if (ev.taken) pc = nextIns(p, p.labels[A]);
+      }
+    }
+    m.pc = pc; ev.next = m.done ? null : pc;
+    return ev;
+  }
+
+  /* ---------- Zeichen-Zustand aus dem Simulator ---------- */
+  const lid = (p, i) => p.id + '-' + i;
+  function scrollFor(prev, idxs, n) {
+    const VIS = 17; let s = prev;
+    const hi = Math.max(...idxs), lo = Math.min(...idxs);
+    if (hi > s + VIS - 3) s = hi - VIS + 5;
+    if (lo < s + 1) s = lo - 3;
+    return Math.max(0, Math.min(s, Math.max(0, n - VIS)));
+  }
+  function dstate(p, m, scroll, c, ci) {
+    const st = { fn: p.id, ci: ci == null ? -1 : ci, rip: m.done ? null : lid(p, m.pc), c: c != null ? c : p.c0, tag: p.tag || 'C',
+      regs: p.regs.map(f => [f, p.lab[f] || f, f === 'rip' ? (m.done ? 'Start…' : '…' + p.lines[m.pc].ad) : (m.regs[f] == null ? '?' : String(m.regs[f]))]),
+      rows: p.rows, cells: {}, rsp: m.regs.rsp, rbp: p.showRbp ? m.regs.rbp : null, flag: m.cmp, flagHot: false,
+      on: [], hot: [], read: [], alu: '', scroll };
+    p.data.forEach(d => { st.cells[d.a] = [d.name + ' = ' + m.mem[d.name], 'dat', d.size === 8 ? 'DQ' : 'DD']; });
+    Object.entries(m.stack).forEach(([a, c]) => { st.cells[a] = c; });
+    return st;
+  }
+
+  /* ---------- Animationsschritte aus einem ausgeführten Befehl ---------- */
+  const F = (from, to, txt, ms, cls) => ({ fly: [from, to, txt, cls], ms });
+  const SET = (p, ms) => ({ set: p, ms });
+  const OPSYM = { add: '+', sub: '−', imul: '·', inc: '+', dec: '−' };
+  function opsFor(p, ev, D1, mode) {
+    const quick = mode === 'quick', fl = quick ? 300 : 700, st = quick ? 160 : 420;
+    const ln = 'ln-' + lid(p, ev.line), o = [];
+    const memSide = x => x && x.t === 'mem';
+    const fly = (a, b, t, cls) => o.push(F(a, b, t, fl, cls));
+    o.push(SET({ on: [lid(p, ev.line)], ci: ev.L.ci, c: ev.L.c || D1.c, scroll: D1.scroll, read: ev.read, hot: [], alu: '', flagHot: false }, quick ? 140 : 320));
+    switch (ev.op) {
+      case 'mov': if (!quick || memSide(ev.src) || memSide(ev.dst)) fly(ev.src.id, ev.dst.id, String(ev.v)); break;
+      case 'add': case 'sub': case 'imul':
+        if (quick) { if (memSide(ev.src) || memSide(ev.dst)) fly(ev.src.id, ev.dst.id, String(ev.b)); break; }
+        fly(ev.dst.id, 'alu', String(ev.a)); fly(ev.src.id, 'alu', String(ev.b));
+        o.push(SET({ alu: ev.a + ' ' + OPSYM[ev.op] + ' ' + ev.b }, 500), SET({ alu: '= ' + ev.r }, 450)); fly('alu', ev.dst.id, String(ev.r)); break;
+      case 'inc': case 'dec':
+        if (quick) break;
+        fly(ev.dst.id, 'alu', String(ev.a)); o.push(SET({ alu: ev.a + ' ' + OPSYM[ev.op] + ' 1' }, 450), SET({ alu: '= ' + ev.r }, 400)); fly('alu', ev.dst.id, String(ev.r)); break;
+      case 'cmp':
+        if (quick) { if (memSide(ev.src) || memSide(ev.dst)) fly(memSide(ev.src) ? ev.src.id : ev.dst.id, 'alu', String(memSide(ev.src) ? ev.b : ev.a)); o.push(SET({ alu: REL[ev.rel], flag: ev.rel, flagHot: true }, 220)); break; }
+        fly(ev.dst.id, 'alu', String(ev.a)); fly(ev.src.id, 'alu', String(ev.b));
+        o.push(SET({ alu: ev.a + ' − ' + ev.b }, 600), SET({ alu: REL[ev.rel], flag: ev.rel, flagHot: true }, 600)); break;
+      case 'push': o.push(SET({ reg: { rsp: String(ev.addr) }, rsp: ev.addr, hot: ['rsp'] }, quick ? 260 : 600)); fly(ev.src.id, 'cell-' + ev.addr, String(ev.v)); break;
+      case 'pop': fly('cell-' + ev.addr, ev.dst.id, String(ev.v)); break;
+      case 'ret': fly('cell-' + ev.addr, 'v-rip', 'zurück: Start', 'ripc'); break;
+      default: o.push(SET({ flagHot: ev.op !== 'jmp' }, quick ? 160 : 500));
+    }
+    // neue Adresse für rip: von der Adresse des nächsten Befehls über die Zeiger-Spur ins rip-Register
+    const fin = Object.assign(clone(D1), { on: [lid(p, ev.line)], hot: ev.hot.concat(ev.op === 'ret' ? [] : []), read: [], flagHot: ev.op === 'cmp' || (!!ev.cond), alu: ev.op === 'cmp' ? REL[ev.rel] : '' });
+    if (ev.op[0] === 'j' || ev.op === 'ret') fin.hot = fin.hot.concat(['rip']);
+    if (!quick && ev.next != null) {
+      // Ergebnis sofort zeigen, sobald der Wert angekommen ist (Register, RAM, Stack, Flags werden gelb).
+      // rip bleibt dabei noch auf dem eben ausgeführten Befehl; erst danach fliegt die neue Adresse hinein.
+      const mid = Object.assign(clone(fin), { rip: lid(p, ev.line), hot: fin.hot.filter(h => h !== 'rip') });
+      const r = mid.regs.find(q => q[0] === 'rip'); if (r) r[2] = '…' + p.lines[ev.line].ad;
+      o.push(SET(mid, 450));
+      o.push({ rfly: [lid(p, ev.next), '…' + p.lines[ev.next].ad] });
+    }
+    o.push(SET(fin, st + (ev.op[0] === 'j' && ev.taken ? 250 : 0)));
+    return o;
+  }
+
+  /* ---------- Erklärtexte, aus dem ausgeführten Befehl erzeugt ---------- */
+  const cd = s => '<code>' + esc(s) + '</code>';
+  const nm = o => o.t === 'mem' ? o.name : o.name;
+  function autoText(p, ev) {
+    const head = cd(ev.L.text) + ': ';
+    switch (ev.op) {
+      case 'mov': {
+        const s = ev.src, d = ev.dst;
+        if (s.t === 'imm' && d.t === 'reg') return head + 'Schreibt ' + ev.v + ' in das Register ' + d.name + '. Die Zahl steht direkt im Befehl.';
+        if (s.t === 'imm') return head + 'Schreibt ' + ev.v + ' in die Variable ' + d.name + ' im RAM. ' + (d.sz === 8 ? cd('qword') + ' heißt: 8 Byte.' : cd('dword') + ' heißt: 4 Byte, so groß wie ein int.');
+        if (s.t === 'mem') return head + 'Lädt ' + s.name + ' (' + ev.v + ') aus dem RAM in das Register ' + d.name + '.';
+        if (d.t === 'mem') return head + 'Speichert ' + s.name + ' (' + ev.v + ') im RAM in der Variable ' + d.name + '.';
+        return head + 'Kopiert ' + s.name + ' (' + ev.v + ') nach ' + d.name + '.';
+      }
+      case 'add': return head + (ev.dst.t === 'mem'
+        ? 'Die CPU holt ' + ev.dst.name + ' aus dem RAM, die ALU rechnet ' + ev.a + ' + ' + ev.b + ' = ' + ev.r + ', und das Ergebnis geht zurück in den RAM.'
+        : ev.dst.name + ' = ' + ev.a + ' + ' + ev.b + ' = ' + ev.r + '.');
+      case 'imul': return head + cd('imul') + ' heißt multiplizieren: ' + ev.dst.name + ' = ' + ev.a + ' · ' + ev.b + ' = ' + ev.r + '.';
+      case 'inc': return head + cd('inc') + ' heißt plus 1: ' + ev.dst.name + ' wird ' + ev.r + '.';
+      case 'dec': return head + cd('dec') + ' heißt minus 1: ' + ev.dst.name + ' wird ' + ev.r + '.';
+      case 'cmp':
+        if (ev.dst.name === 'rsp' && ev.src.name === 'rbp') return head + 'Ist der Stack leer? Das ist er, wenn rsp wieder gleich rbp ist. Hier: ' + ev.a + ' und ' + ev.b + ' → <b>' + REL[ev.rel] + '</b>.';
+        return head + 'Vergleicht ' + nm(ev.dst) + ' (' + ev.a + ') mit ' + (ev.src.t === 'imm' ? ev.b : nm(ev.src) + ' (' + ev.b + ')') + ': <b>' + REL[ev.rel] + '</b>.';
+      case 'jmp': return head + cd('jmp') + ' springt immer, ohne Bedingung, zu ' + cd(ev.target) + '.';
+      case 'push': return head + 'rsp rückt 8 Byte nach unten, dann liegt ' + ev.v + ' oben auf dem Stack.';
+      case 'pop': return head + 'Holt das oberste Element (' + ev.v + ') nach ' + ev.dst.name + '. Danach rückt rsp 8 Byte nach oben.';
+      case 'ret': return head + 'Holt die Rücksprungadresse vom Stack und springt zurück in den Startcode. main ist fertig und gibt rax = ' + ev.rax + ' zurück.';
+      default: return head + 'Springt nur, wenn der letzte Vergleich <b>' + ev.cond + '</b> war. Er war ' + REL[ev.rel] + ' → ' +
+        (ev.taken ? '<b>Sprung</b> zu ' + cd(ev.target) + '.' : '<b>kein Sprung</b>, weiter mit der nächsten Zeile.');
+    }
+  }
+
+  /* ---------- Programme mit Registern, RAM-Zeilen und Ablauf ---------- */
+  function prog(id, srcKey, cfg) {
+    const p = Object.assign({ id, srcKey, lab: {}, c0: '', tag: 'C', over: null }, cfg);
+    Object.assign(p, parse(srcKey, SRC[srcKey], p.over));
+    p.loopHeads = (p.loops || []).map(l => nextIns(p, p.labels[l]));
+    // Probelauf: wie tief wird der Stack?
+    const m = newMachine(p); let g = 0, low = STACK_TOP;
+    while (!m.done && g++ < 5000) { step(p, m); low = Math.min(low, m.regs.rsp); }
+    p.final = m;
+    const rows = [];
+    for (let a = STACK_TOP; a >= low; a -= 8) rows.push([a, 8]);
+    rows.push(['gap']);
+    p.data.slice().reverse().forEach(d => rows.push([d.a, d.size]));
+    p.rows = rows;
+    return p;
+  }
+  const P = {
+    aif: prog('aif', 'aif', { regs: ['rip', 'rsp', 'rax'], c0: 'int i = 40, j = 45, k = 10;' }),
+    afor: prog('afor', 'afor', { regs: ['rip', 'rsp', 'rcx', 'rax'], lab: { rcx: 'ecx' }, c0: 'int summe = 0;', loops: ['schleife'] }),
+    b: prog('b', 'b', { regs: ['rip', 'rsp', 'rcx', 'rax'], lab: { rcx: 'ecx', rax: 'eax' }, c0: 'int N = 3;', over: { N: 3 }, note100: true, loops: ['schleife'] }),
+    c: prog('c', 'c', { regs: ['rip', 'rsp', 'rcx', 'rdx', 'rax'], lab: { rcx: 'ecx', rdx: 'edx', rax: 'eax' }, c0: 'int N = 3;', over: { N: 3 }, note100: true, loops: ['schleife'] }),
+    d: prog('d', 'd', { regs: ['rip', 'rsp', 'rcx', 'rdx', 'rax'], c0: 'long N = 3;', over: { N: 3 }, note100: true, loops: ['L1', 'L2'] }),
+    e3: prog('e3', 'e', { regs: ['rip', 'rsp', 'rbp', 'rbx', 'rax'], tag: 'Idee', c0: 'F(3) berechnen', over: { N: 3 }, showRbp: true, loops: ['anfang'] }),
+    e5: prog('e5', 'e', { regs: ['rip', 'rsp', 'rbp', 'rbx', 'rax'], tag: 'Idee', c0: 'F(5) berechnen', showRbp: true, loops: ['anfang'] })
+  };
+  window.__P = P;   // zum Testen: Endwerte des Simulators
+
+  // Texte für eine ganze Schleifenrunde auf einmal
+  const evOf = (evs, op) => evs.find(e => e.op === op);
+  const ROUND = {
+    afor: (evs, m0, m1) => 'Runde mit i = ecx = ' + m0.regs.rcx + ': summe = ' + m0.mem.summe + ' + ' + m0.regs.rcx + ' = ' + m1.mem.summe + ', dann ecx = ' + m1.regs.rcx + '.',
+    b: (evs, m0, m1) => 'Runde mit ecx = ' + m0.regs.rcx + ': eax = ' + m0.regs.rcx + ' · ' + m0.regs.rcx + ' = ' + m1.regs.rax + '. Das alte Quadrat ist überschrieben.',
+    c: (evs, m0, m1) => 'Runde mit ecx = ' + m0.regs.rcx + ': edx = ' + m1.regs.rdx + ', Summe eax = ' + m0.regs.rax + ' + ' + m1.regs.rdx + ' = ' + m1.regs.rax + '.',
+    d: (evs, m0, m1) => evOf(evs, 'push')
+      ? 'Runde mit rcx = ' + m0.regs.rcx + ': ' + m0.regs.rcx + ' · ' + m0.regs.rcx + ' = ' + evOf(evs, 'push').v + ' kommt oben auf den Stack.'
+      : 'Runde mit rcx = ' + m0.regs.rcx + ': pop holt ' + evOf(evs, 'pop').v + ', Summe rax = ' + m0.regs.rax + ' + ' + evOf(evs, 'pop').v + ' = ' + m1.regs.rax + '.',
+    e: (evs, m0, m1) => {
+      const po = evOf(evs, 'pop'); if (!po) return '';
+      if (po.v > 1) return 'pop holt ' + po.v + '. ' + po.v + ' ist größer als 1: Die Aufgaben ' + (po.v - 1) + ' und ' + (po.v - 2) + ' kommen auf den Stack.';
+      if (po.v === 1) return 'pop holt 1. F(1) = 1, also rax + 1 = ' + m1.regs.rax + '.';
+      return 'pop holt 0. F(0) = 0, nichts zu tun.';
+    }
+  };
+  ROUND.e3 = ROUND.e; ROUND.e5 = ROUND.e;
+
+  /* ---------- Die Teile ---------- */
+  const S = [
+    { p: 'aif', dot: 'a1', act: 'Aufgabe a · if', title: 'a) Eine if-Anweisung in Assembler', beats: [
+      { say: 'Links steht die offizielle Lösung. Oben die Variablen in ' + cd('SECTION .data') + ': i = 40, j = 45, k = 10. Rechts liegen sie im RAM, unten bei den kleinen Adressen. Ganz oben im RAM liegt der Stack.' },
+      { say: 'Zwei Farben helfen beim Lesen. <b>Gelb</b> ist der Befehl, der eben ausgeführt wurde: was gerade passiert ist. Der <b>lila</b> Pfeil ist rip: der Befehl, der als Nächstes kommt. Oben steht das noch einmal als Legende.' },
+      { run: 1 },
+      { run: 1, add: ' Achtung: In C steht i <b>&gt;</b> 42, gesprungen wird bei <b>≤</b>. Die Bedingung ist umgedreht, weil der Sprung den if-Block <b>überspringt</b>.' },
+      { run: 1 }, { run: 1 }, { run: 1 },
+      { run: 1, add: ' Ohne diesen Sprung würde das Programm danach auch noch k = 2 ausführen.' },
+      { run: 1, add: ' rax ist der Rückgabewert von main: das ' + cd('return 0;') + ' aus C.' },
+      { run: 1 },
+      { say: 'Ergebnis: <b>k = 1</b>. i = 40 ist nicht größer als 42, aber j = 45 schon. Die beiden ' + cd('jle') + ' springen über einen Zweig, die beiden ' + cd('jmp') + ' springen ans Ende.' }
+    ] },
+    { p: 'afor', dot: 'a2', act: 'Aufgabe a · for', title: 'a) Eine for-Schleife in Assembler', beats: [
+      { say: 'Eine einfache for-Schleife: i zählt von 1 bis 3, und jedes Mal kommt i zu summe dazu. Der C-Code steht links oben als Kommentar. i liegt im Register <b>ecx</b>.' },
+      { run: 1 },
+      { run: 1 },
+      { run: 1, add: ' Umgedreht: In C steht i ≤ 3, gesprungen wird bei i &gt; 3.' },
+      { run: 1 }, { run: 1 },
+      { run: 1, add: ' Zurück nach oben: Runde 2.' },
+      { run: 'round', pre: 'Jetzt eine ganze Runde pro Klick. ' }, { run: 'round' },
+      { run: 2, mode: 'full', say: 'ecx = 4: 4 ist größer als 3. ' + cd('jg ende') + ' springt aus der Schleife.' },
+      { run: 2, mode: 'full', say: cd('mov rax, 0') + ' und ' + cd('ret') + ': main gibt 0 zurück. Ergebnis: <b>summe = 6</b> = 1 + 2 + 3.' },
+      { say: 'Zum Üben zu Hause: Auf dem Blatt hat die Schleife zwei Variablen und zwei Bedingungen: ' + cd('for (i = 0, j = 0; (i >= 0) && (j < 10); i++) j += i;') + ' Wie würdet ihr das übersetzen? Probiert es aus.' }
+    ] },
+    { p: 'b', dot: 'b', act: 'Aufgabe b · Quadrate', title: 'b) Die Quadrate von 1 bis N', beats: [
+      { say: '<b>Achtung: Auf dem Blatt steht N = 100. Wir nehmen hier N = 3, damit die Animation kurz bleibt.</b> Das Prinzip ist genau gleich. ' + 'Die Quadrate von 1 bis N in einer Schleife. Das Quadrat wird jedes Mal überschrieben, so verlangt es die Aufgabe. Für 1 bis 100 ändert man nur ' + cd('N DD 100') + '.' },
+      { run: 2, mode: 'full', say: 'Vorbereitung: eax = 0, ecx = 1. ecx ist der Zähler i. Mit den 32-Bit-Namen eax und ecx ist ein Wert 4 Byte groß, wie ein int.' },
+      { run: 1 },
+      { run: 1, add: ' Die Schleife läuft, solange i ≤ N. Raus springt sie bei i <b>&gt;</b> N, also ' + cd('jg') + '.' },
+      { run: 1 }, { run: 1 }, { run: 1 }, { run: 1 },
+      { run: 'round', pre: 'Jetzt eine ganze Runde pro Klick. ' }, { run: 'round' },
+      { run: 2, mode: 'full', say: 'ecx = 4 ist größer als N = 3: ' + cd('jg ende') + ' springt aus der Schleife.' },
+      { run: 2, mode: 'full', say: cd('mov rax, 0') + ' und ' + cd('ret') + '. In eax stand zuletzt 9 = 3 · 3. Gespeichert wurde nichts, so will es die Aufgabe.' }
+    ] },
+    { p: 'c', dot: 'c', act: 'Aufgabe c · Summe', title: 'c) Die Quadrate aufsummieren', beats: [
+      { say: '<b>Achtung: Auf dem Blatt steht N = 100. Wir nehmen hier N = 3, damit die Animation kurz bleibt.</b> Das Prinzip ist genau gleich. ' + 'Jetzt werden die Quadrate aufsummiert. Die Summe steht in eax, das Quadrat in edx. Erwartet: 1 + 4 + 9 = 14.' },
+      { run: 2, mode: 'full', say: 'Vorbereitung: Summe eax = 0, Zähler ecx = 1.' },
+      { run: 1 }, { run: 1 }, { run: 1 }, { run: 1 },
+      { run: 1, add: ' Neu gegenüber b: Das Quadrat wird nicht überschrieben, sondern zur Summe addiert.' },
+      { run: 1 }, { run: 1 },
+      { run: 'round', pre: 'Jetzt eine ganze Runde pro Klick. ' }, { run: 'round' },
+      { run: 2, mode: 'full', say: 'ecx = 4 ist größer als N = 3: Die Schleife ist vorbei. In eax steht die Summe <b>14</b>.' },
+      { run: 1, mode: 'full', say: 'Achtung: ' + cd('mov rax, 0') + ' <b>überschreibt die Summe</b>, denn eax ist die untere Hälfte von rax. Die Lösung macht das, damit main 0 zurückgibt. Ohne diese Zeile gäbe main 14 zurück, und ' + cd('echo $?') + ' würde 14 zeigen.' },
+      { run: 1 }
+    ] },
+    { p: 'd', dot: 'd', act: 'Aufgabe d · Stack', title: 'd) Die Quadrate über den Stack aufsummieren', beats: [
+      { say: '<b>Achtung: Auf dem Blatt steht N = 100. Wir nehmen hier N = 3, damit die Animation kurz bleibt.</b> Das Prinzip ist genau gleich. ' + 'Jetzt mit dem Stack. Erste Schleife: alle Quadrate mit ' + cd('push') + ' auf den Stack legen. Zweite Schleife: mit ' + cd('pop') + ' einzeln holen und aufsummieren.' },
+      { run: 2, mode: 'full', say: 'Vorbereitung: rax = 0, rcx = 1. Hier mit den 64-Bit-Namen, denn push und pop arbeiten immer mit 8 Byte. Deshalb ist auch N ein ' + cd('DQ') + ' (8 Byte).' },
+      { run: 1 }, { run: 1 }, { run: 1 }, { run: 1 },
+      { run: 1, add: ' rsp zeigt immer auf das oberste Element.' },
+      { run: 1 }, { run: 1 },
+      { run: 'round', pre: 'Jetzt eine ganze Runde pro Klick. ' }, { run: 'round' },
+      { run: 2, mode: 'full', say: 'rcx = 4 ist größer als N = 3: Sprung zu ' + cd('E1') + '. Jetzt liegen 3 Quadrate auf dem Stack, die 9 ganz oben.' },
+      { run: 2, mode: 'full', say: 'Zweite Schleife vorbereiten: Summe rax = 0, Zähler rcx = 1. Der Zähler sorgt dafür, dass genau 3-mal gepoppt wird.' },
+      { run: 2, mode: 'full', say: 'Gleiche Bedingung wie oben: weiter, solange rcx ≤ N.' },
+      { run: 1, add: ' Das ist die 9, also das <b>zuletzt</b> gepushte Quadrat: Last In, First Out.' },
+      { run: 1 },
+      { run: 2, mode: 'full', say: 'rcx + 1, dann zurück zu ' + cd('L2') + '.' },
+      { run: 'round', pre: 'Wieder eine ganze Runde pro Klick. ' }, { run: 'round' },
+      { run: 2, mode: 'full', say: 'rcx = 4: fertig. Summe rax = <b>14</b> = 9 + 4 + 1. Der Stack ist wieder leer bis auf die Rücksprungadresse.' },
+      { run: 1, mode: 'full', say: 'Achtung: Auch hier <b>überschreibt</b> ' + cd('mov rax, 0') + ' die Summe. Wichtig ist aber: 3-mal push, 3-mal pop. Nur deshalb zeigt rsp wieder auf die Rücksprungadresse.' },
+      { run: 1, add: ' Hätten wir einmal zu wenig gepoppt, würde ret eine Quadratzahl als Adresse nehmen und das Programm abstürzen.' }
+    ] },
+    { p: 'e3', dot: 'e1', extra: true, act: 'Aufgabe e · Fibonacci (Zusatz)', title: 'e) Fibonacci mit dem Stack: erst F(3)', beats: [
+      { say: '<b>Zusatzaufgabe: Die machen wir nicht in der Übung. Sie ist für zu Hause, für alle, die mehr wollen.</b> Fibonacci: F(0) = 0, F(1) = 1, sonst F(n) = F(n−1) + F(n−2). Die Lösung rechnet ohne Rekursion. Der Stack ist eine Liste von <b>Aufgaben</b>, die noch offen sind.' },
+      { say: 'Die Idee: Hole eine Aufgabe n vom Stack. Bei n = 1 zählt rax eins hoch. Bei n = 0 passiert nichts. Sonst kommen n−1 und n−2 als neue Aufgaben auf den Stack. Ist der Stack leer, steht in rax das Ergebnis.' },
+      { say: 'Zum Verstehen setzen wir N = 3, wie im Beispiel der Lösung. Erwartet: F(3) = 2.' },
+      { run: 2, mode: 'full', say: 'Prolog: ' + cd('push rbp') + ' rettet den rbp des Startcodes. ' + cd('mov rbp, rsp') + ' merkt sich, wo der Stack jetzt anfängt. Steht rsp später wieder hier, ist der Stack leer.' },
+      { run: 2, mode: 'full', say: 'rax = 0 ist das Ergebnis. ' + cd('push qword [N]') + ' legt N = 3 als erste Aufgabe auf den Stack, direkt aus dem RAM.' },
+      { run: 2, mode: 'full', say: cd('cmp rsp, rbp') + ' fragt: Ist der Stack leer? rsp ist ungleich rbp, also nein. ' + cd('je ende') + ' springt nicht.' },
+      { run: 1, add: ' Das ist die Aufgabe „berechne F(3)“.' },
+      { run: 2, mode: 'full', say: '3 ist größer als 1: ' + cd('jg weiter_pushen') + ' springt.' },
+      { run: 5, mode: 'full', say: 'F(3) = F(2) + F(1). Also kommen die Aufgaben 2 und 1 auf den Stack: ' + cd('dec') + ' zieht 1 ab, ' + cd('push') + ' legt ab. Dann zurück zu ' + cd('anfang') + '.' },
+      { run: 'round', pre: 'Jetzt eine Runde pro Klick. ' }, { run: 'round' }, { run: 'round' }, { run: 'round' },
+      { run: 2, mode: 'full', say: 'rsp = rbp: Der Stack ist leer, alle Aufgaben sind erledigt. ' + cd('je ende') + ' springt.' },
+      { run: 4, mode: 'full', say: 'rax = 2 wird in ' + cd('Ergebnis') + ' gespeichert. ' + cd('pop rbp') + ' gibt den rbp zurück, dann ' + cd('ret') + '.' },
+      { say: '<b>F(3) = 2.</b> Jede 1, die vom Stack kam, hat rax um 1 erhöht. F(n) ist also die Anzahl der Einsen, die beim Zerlegen entstehen.' }
+    ] },
+    { p: 'e5', dot: 'e2', extra: true, act: 'Aufgabe e · Fibonacci (Zusatz)', title: 'e) Jetzt F(5), wie in der Lösung', beats: [
+      { say: 'Jetzt N = 5 wie in der Lösung. Gleicher Ablauf, nur mehr Runden. Erwartet: F(5) = 5.' },
+      { run: 4, mode: 'quick', say: 'Prolog, rax = 0 und die erste Aufgabe: N = 5 kommt auf den Stack.' },
+      { run: 'round' }, { run: 'round' }, { run: 'round' },
+      { run: 'rest', say: 'Die restlichen Runden auf einmal, bis der Stack leer ist. Achtet rechts auf den Stack: Mehr als drei Aufgaben liegen nie gleichzeitig darauf.' },
+      { run: 4, mode: 'quick', say: 'rax = 5 wird in ' + cd('Ergebnis') + ' gespeichert. <b>F(5) = 5.</b>' },
+      { say: 'Für Genaue: rbx gehört laut Aufrufkonvention (der festen Regel für Funktionsaufrufe) dem Aufrufer. Eine Funktion muss es unverändert zurückgeben. Die Lösung ändert rbx, ohne es zu retten. Hier geht das gut. Sauber wäre ' + cd('push rbx') + ' am Anfang und ' + cd('pop rbx') + ' am Ende.' }
+    ] }
+  ];
+
+  /* ---------- Listings bauen ---------- */
+  Object.values(P).forEach(p => {
+    const d = document.createElement('div'); d.className = 'listing off'; d.id = 'list-' + p.id;
+    let h = '<div class="lsc" id="lsc-' + p.id + '"><div class="rarrow" id="ra-' + p.id + '"></div>';
+    p.lines.forEach(L => {
+      const id = 'ln-' + lid(p, L.idx);
+      if (L.kind === 'ins') {
+        const ci = L.raw.indexOf(';');
+        const code = ci >= 0 ? L.raw.slice(0, ci).trim() : L.raw.trim(), cm = ci >= 0 ? L.raw.slice(ci) : '';
+        // Kommentare hinter Befehlen nur so weit zeigen, wie sie in die Zeile passen (ca. 29 Zeichen)
+        const room = 29 - code.length - 1;
+        const cmt = !cm || room < 6 ? '' : cm.length > room ? cm.slice(0, room - 1) + '…' : cm;
+        h += '<div class="ln" id="' + id + '"><span class="ad" id="ad-' + lid(p, L.idx) + '">…' + L.ad + '</span>' + esc(code) + (cmt ? ' <span class="cm">' + esc(cmt) + '</span>' : '') + '</div>';
+      } else if (L.kind === 'label') h += '<div class="ln lab" id="' + id + '">' + esc(L.raw.trim()) + '</div>';
+      else if (L.kind === 'comment') { const t = L.raw.trim(); h += '<div class="ln decl" id="' + id + '"><span class="cm">' + esc(t.length > 33 ? t.slice(0, 32) + '…' : t) + '</span></div>'; }
+      else if (L.kind === 'data') h += '<div class="ln decl" id="' + id + '"><b>' + esc(L.raw.trim()) + '</b></div>';
+      else h += '<div class="ln decl" id="' + id + '">' + esc(L.raw.trim()) + '</div>';
+    });
+    d.innerHTML = h + '</div>';
+    $('code').appendChild(d);
+    const cb = document.createElement('div'); cb.className = 'cbox off'; cb.id = 'cbox-' + p.id;
+    cb.innerHTML = '<div class="hd">' + (p.tag === 'Idee' ? 'Die Idee in C' : 'Das Programm in C') + '</div><div style="padding:3px 0">' +
+      CSRC[p.srcKey].map((l, i) => '<div class="cl" id="cl-' + p.id + '-' + i + '">' + (p.over && 'N' in p.over && l.includes('N = 5') ? esc(l.replace('N = 5', 'N = ' + p.over.N)) + (p.note100 ? '  <span class="cm">// Blatt: 100</span>' : '') : esc(l)) + '</div>').join('') + '</div>' +
+      (p.note100 ? '<div class="cnote">Blatt: N = 100 · hier N = 3 (kürzer)</div>' : '');
+    $('stage').insertBefore(cb, $('mem'));
+    p.cboxH = 24 + 6 + 4 + CSRC[p.srcKey].length * 17 + (p.note100 ? 30 : 0);
+  });
+
+  /* ---------- Zeichnen ---------- */
+  let regKey = '', rowKey = '', rowY = {}, rowH = {};
+  // RAM unter dem C-Kasten. Zeilenhöhe passt sich an, damit alles auf die Bühne passt.
+  let RAM0 = 100;
+  function layoutRows(rows, cH) {
+    const key = JSON.stringify(rows) + cH; if (key === rowKey) return; rowKey = key;
+    const top = 4 + cH + 10, y0 = top + 18, gapH = 22;
+    let units = 0; rows.forEach(([a, n]) => { if (a !== 'gap') units += n === 8 ? 1 : 0.8; });
+    const h8 = Math.max(18, Math.min(31, Math.floor((376 - y0 - gapH) / units))), h4 = Math.max(18, Math.round(h8 * 0.8));
+    let y = y0, h = '<div class="grow" style="top:' + top + 'px">oben Stack (hohe Adressen) · unten .data</div>';
+    rowY = {}; rowH = {}; let first = true; RAM0 = y0;
+    rows.forEach(([a, n]) => {
+      if (a === 'gap') { h += '<div class="gap" style="top:' + (y + 1) + 'px">⋮ viel Speicher dazwischen ⋮</div>'; y += gapH; first = true; return; }
+      const hh = n === 8 ? h8 : h4; rowY[a] = y; rowH[a] = hh;
+      h += '<div class="adr" style="top:' + (y + (hh - 18) / 2) + 'px">' + a + '</div><div class="cell" id="cell-' + a + '" style="top:' + (first ? y : y - 2) + 'px;height:' + (first ? hh : hh + 2) + 'px"></div>';
+      y += hh; first = false;
+    });
+    h += '<div class="mptr" id="p-rbp">rbp →</div><div class="mptr" id="p-rsp">← rsp</div>';
+    $('mem').innerHTML = h;
+  }
+  function draw(st, instant) {
+    if (instant) stage.classList.add('noanim');
+    Object.keys(P).forEach(id => $('list-' + id).classList.toggle('off', id !== st.fn));
+    const lst = $('list-' + st.fn);
+    lst.querySelectorAll('.ln').forEach(l => l.classList.toggle('on', (st.on || []).includes(l.id.slice(3))));
+    $('lsc-' + st.fn).style.transform = 'translateY(' + (-st.scroll * 18.6) + 'px)';
+    const ra = $('ra-' + st.fn), rl = st.rip ? $('ln-' + st.rip) : null;
+    ra.style.opacity = rl ? 1 : 0; if (rl) ra.style.top = (rl.offsetTop + 2) + 'px';
+    // Zeiger: rip-Register (links, y 82) → Spur x 356 → rechter Rand des Code-Kastens, auf Höhe der Zeile
+    const yl = rl ? 46 + rl.offsetTop - st.scroll * 18.6 + 9.3 : -1, vis = rl && yl > 48 && yl < 372;
+    $('rptr').style.opacity = vis ? 1 : 0;
+    if (vis) $('rptrp').setAttribute('d', 'M 394 82 H 356 V ' + yl.toFixed(1) + ' H 341');
+    $('cline').innerHTML = '<small>Assembler</small>';
+    Object.keys(P).forEach(id => $('cbox-' + id).classList.toggle('off', id !== st.fn));
+    document.querySelectorAll('#cbox-' + st.fn + ' .cl').forEach((e, i) => e.classList.toggle('on', i === st.ci));
+    // Register
+    const rk = st.regs.map(r => r[0] + r[1]).join();
+    if (rk !== regKey) {
+      regKey = rk;
+      $('regs').innerHTML = st.regs.map(([f, n]) => '<div class="reg"><span class="n' + (f === 'rip' ? ' rip' : '') + '">' + n + '</span><span class="v" id="v-' + f + '"></span></div>').join('');
+    }
+    st.regs.forEach(([f, , v]) => { const e = $('v-' + f); e.textContent = v; e.classList.toggle('hot', (st.hot || []).includes(f)); });
+    ['lt', 'eq', 'gt'].forEach(r => $('fl-' + r).classList.toggle('lit', st.flag === r));
+    $('flg').classList.toggle('hot', !!st.flagHot);
+    $('alu').classList.toggle('on', !!st.alu); $('alu-op').textContent = st.alu || '';
+    // RAM
+    layoutRows(st.rows, P[st.fn].cboxH);
+    st.rows.forEach(([a]) => {
+      if (a === 'gap') return;
+      const c = st.cells[a] || ['', 'empty', ''], e = $('cell-' + a);
+      e.className = 'cell ' + c[1] + ((st.hot || []).includes(a) ? ' hot' : '') + ((st.read || []).includes(a) ? ' read' : '');
+      e.innerHTML = '<span>' + esc(c[0]) + '</span><small>' + esc(c[2] || '') + '</small>';
+    });
+    const pr = $('p-rsp'), pb = $('p-rbp');
+    const inRows = a => a != null && a in rowY;
+    pr.style.top = (inRows(st.rsp) ? rowY[st.rsp] + rowH[st.rsp] / 2 - 11 : RAM0 - 22) + 'px';
+    pr.style.left = inRows(st.rsp) ? '952px' : '900px';
+    pr.textContent = inRows(st.rsp) ? '← rsp' : '↑ rsp ' + st.rsp;
+    pb.style.opacity = st.rbp == null ? 0 : 1;
+    pb.style.top = (inRows(st.rbp) ? rowY[st.rbp] + rowH[st.rbp] / 2 - 11 : RAM0 - 22) + 'px';
+    pb.textContent = inRows(st.rbp) ? 'rbp →' : 'rbp ↑ ' + st.rbp;
+    if (instant) { void stage.offsetWidth; stage.classList.remove('noanim'); }
+  }
+
+  /* ---------- Fliegende Werte ---------- */
+  function mid(el) { const a = stage.getBoundingClientRect(), b = el.getBoundingClientRect(), k = a.width / 1000; return [(b.left - a.left + b.width / 2) / k, (b.top - a.top + b.height / 2) / k]; }
+  function fly(from, to, txt, ms, cls) {
+    const ea = $(from), eb = $(to); if (!ea || !eb) return;
+    const c = document.createElement('div'), a = mid(ea), b = mid(eb);
+    c.className = 'fly' + (cls ? ' ' + cls : ''); c.textContent = txt;
+    c.style.left = a[0] + 'px'; c.style.top = a[1] + 'px'; c.style.transitionDuration = ms + 'ms';
+    fx.appendChild(c); void c.offsetWidth; c.style.left = b[0] + 'px'; c.style.top = b[1] + 'px';
+    later(ms + 30, () => c.remove());
+  }
+
+  // Adresse startet links neben dem nächsten Befehl, läuft nach rechts aus dem Code und auf der Zeiger-Spur hoch zu rip
+  function ripFly(id, txt) {
+    const lab = $('ad-' + id), r = $('v-rip'); if (!lab || !r) return;
+    const a = mid(lab), b = mid(r), X = 356;
+    lab.classList.add('src');
+    const c = document.createElement('div');
+    c.className = 'fly ripc'; c.textContent = txt;
+    c.style.left = a[0] + 'px'; c.style.top = a[1] + 'px'; c.style.transitionTimingFunction = 'linear';
+    fx.appendChild(c);
+    let t = 350;
+    [[X, a[1], 450], [X, b[1], 450], [b[0], b[1], 400]].forEach(([x, y, d]) => { later(t, () => { c.style.transitionDuration = d + 'ms'; c.style.left = x + 'px'; c.style.top = y + 'px'; }); t += d; });
+    later(t + 30, () => { c.remove(); lab.classList.remove('src'); });
+  }
+
+  /* ---------- Zustände ---------- */
+  function apply(st, p) {
+    const n = clone(st);
+    Object.entries(p).forEach(([k, v]) => {
+      if (k === 'cells') Object.entries(v).forEach(([a, c]) => { n.cells[a] = c; });
+      else if (k === 'reg') Object.entries(v).forEach(([r, x]) => { const e = n.regs.find(q => q[0] === r); if (e) e[2] = x; });
+      else n[k] = v;
+    });
+    return n;
+  }
+  const fresh = st => { const n = clone(st); n.on = []; n.hot = []; n.read = []; n.alu = ''; n.flagHot = false; return n; };
+
+  /* ---------- Schritte bauen: Simulator laufen lassen, erst Text, dann Animation ---------- */
+  S.forEach(sc => {
+    const p = P[sc.p], m = newMachine(p);
+    let D = dstate(p, m, 0, null);
+    const steps = [];
+    sc.beats.forEach(b => {
+      if (!b.run) { steps.push({ say: b.say, st: clone(D) }); return; }
+      const mode = b.mode || (b.run === 'round' ? 'quick' : b.run === 'rest' ? 'jump' : 'full');
+      const m0 = clone(m), D0 = fresh(D), evs = [], ops = [];
+      let cur = D0, n = 0;
+      while (!m.done) {
+        const ev = step(p, m); evs.push(ev); n++;
+        const scroll = scrollFor(cur.scroll, [ev.line].concat(m.done ? [] : [m.pc]), p.lines.length);
+        const D1 = dstate(p, m, scroll, ev.L.c, ev.L.ci);
+        if (mode === 'jump') {
+          const roundEnd = m.done || p.loopHeads.includes(m.pc);
+          if (roundEnd) ops.push(SET(Object.assign(clone(D1), { hot: ev.hot, on: [lid(p, ev.line)] }), 420));
+        } else ops.push(...opsFor(p, ev, D1, mode));
+        cur = D1;
+        if (typeof b.run === 'number' && n >= b.run) break;
+        if (b.run === 'round' && p.loopHeads.includes(m.pc)) break;
+        if (b.run === 'rest' && m.pc === nextIns(p, p.labels.ende)) break;
+      }
+      if (mode === 'jump') ops.push(SET(Object.assign(clone(cur), { hot: evs[evs.length - 1].hot, on: [lid(p, evs[evs.length - 1].line)] }), 420));
+      // Endzustand = letzter SET mit allen Feldern
+      let fin = D0; ops.forEach(o => { if (o.set) fin = apply(fin, o.set); });
+      let say = b.say;
+      if (say == null) say = b.run === 'round' || b.run === 'rest' ? ROUND[p.id](evs, m0, m) : autoText(p, evs[0]);
+      if (b.pre) say = b.pre + say;
+      if (b.add) say += b.add;
+      steps.push({ say, st: clone(D) });
+      steps.push({ say, st: fin, play: true, ops, from: D0 });
+      D = fin;
+    });
+    sc.steps = steps;
+  });
+
+  /* ---------- Abspielen ---------- */
+  let timers = [], busy = false, target = null;
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const stop = () => { timers.forEach(clearTimeout); timers = []; fx.innerHTML = ''; };
+  function finish() { stop(); busy = false; draw(target, true); ui(); }
+  function play(stp) {
+    busy = true; target = stp.st; ui();
+    let cur = stp.from, t = 0;
+    draw(cur, false);
+    stp.ops.forEach(o => {
+      if (o.fly) { const [a, b, txt, cls] = o.fly, d = o.ms || 700; later(t, () => fly(a, b, txt, d, cls)); t += d + 40; }
+      else if (o.rfly) { const [id, txt] = o.rfly; later(t, () => ripFly(id, txt)); t += 1700; }
+      else if (o.set) { const p = o.set; later(t, () => { cur = apply(cur, p); draw(cur, false); }); t += o.ms || 420; }
+    });
+    later(t + 100, () => { busy = false; draw(target, false); ui(); });
+  }
+
+  let cur = 0, k = 0, steps = [];
+  const dots = $('dots');
+  S.forEach((s, i) => { const d = document.createElement('button'); d.className = 'dot'; d.textContent = s.dot; d.title = s.title; d.onclick = () => show(i); dots.appendChild(d); });
+  function ui() {
+    const nx = steps[k + 1];
+    $('next').textContent = busy ? 'läuft …' : nx && nx.play ? 'Zeigen →' : (!nx && cur < S.length - 1 ? 'Nächster Teil →' : 'Weiter →');
+    $('next').classList.toggle('play', !busy && !!(nx && nx.play));
+    $('next').disabled = !busy && !nx && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && k === 0;
+    $('cnt').textContent = 'Schritt ' + (k + 1) + ' / ' + steps.length;
+  }
+  function go(j, anim) {
+    const s = steps[j]; k = j;
+    $('say').innerHTML = s.say;
+    stop(); busy = false; target = s.st;
+    if (anim && s.play) play(s); else draw(s.st, true);
+    ui();
+  }
+  function show(i, last) {
+    stop(); busy = false; cur = i; steps = S[i].steps;
+    if (S[i].extra) {   // große Einblendung „Zusatzaufgabe“, ca. 1,25 s, Klick schließt sie sofort
+      const old = document.querySelector('.xintro'); if (old) old.remove();
+      const x = document.createElement('div'); x.className = 'xintro';
+      x.innerHTML = '<div class="card"><b>Zusatzaufgabe</b><span>Nicht Teil der Übung · zu Hause, für alle, die mehr wollen</span></div>';
+      x.onclick = () => x.remove(); x.addEventListener('animationend', e => { if (e.target === x) x.remove(); });
+      document.body.appendChild(x);
+      setTimeout(() => x.remove(), 1400);   // falls animationend ausbleibt
+    }
+    $('act').innerHTML = S[i].extra ? '<span class="xwarn">Zusatzaufgabe · zu Hause</span>' : esc(S[i].act); $('ttl').textContent = S[i].title;
+    [...dots.children].forEach((d, n) => { if (n === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    go(last ? steps.length - 1 : 0, false);
+  }
+  function next() {
+    if (busy) return finish();
+    if (k < steps.length - 1) go(k + 1, true); else if (cur < S.length - 1) show(cur + 1);
+  }
+  function prev() {
+    if (busy) finish();
+    if (k > 0) go(k - 1, false); else if (cur > 0) show(cur - 1, true);
+  }
+  $('next').onclick = next; $('prev').onclick = prev; $('replay').onclick = () => show(cur);
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'r' || e.key === 'R') show(cur);
+  });
+
+  function fit() {
+    const w = box.clientWidth, s = Math.max(0.5, Math.min(w / 1000, (window.innerHeight - 250) / 380, 1.6));
+    stage.style.transform = 'scale(' + s + ')'; stage.style.left = (w - 1000 * s) / 2 + 'px'; box.style.height = 380 * s + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.__go = (i, j) => { show(i); if (j) go(Math.min(j, steps.length - 1), false); };
+  window.__S = S;
+  fit(); show(0);
+})();
+</script>
+</body>
+</html>

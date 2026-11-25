@@ -1,0 +1,1545 @@
+<meta charset="utf-8">
+<title>KGÜ 4 · Speicher für Programme</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Wie die anderen KGÜ-Seiten: bewusst nur hell (Beamer). Layout wie KGÜ 5: eine Bühne mit fester logischer
+   Größe (1000 × 548), per fit() auf den Bildschirm skaliert, darunter die Steuerleiste. Kein Scrollen.
+   Bühne: oben über die ganze Breite der RAM. Darunter links die Erklärung an fester Stelle (oben) und
+   darunter je nach Teil die Lupe, die Warteschlange oder der Buddy-Baum; rechts das Fenster mit
+   Bildschirm, CPU oder OS-Figur. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f4f5f8;
+  --os: #3a3f4b; --pick: #1f7a4d; --cand: #2f5fb8; --warn: #c2410c; --warn-bg: #fff1e6;
+  --hl: #fff4c2; --hl-b: #b7790c; --ptr: #ffd400;
+  --app-discord: #5865a8; --app-spotify: #1f8a5a; --app-mail: #0e7490; --app-a: #2f5fb8; --app-chrome: #c0392b; --app-code: #7a4fd0;
+  --app-zoom: #b45309; --app-notiz: #9d174d; --app-spiel: #4d7c0f;
+  --scr-bg: #dfe7f2; --scr-dock: rgba(255,255,255,0.75); --win: #ffffff; --win-bar: #eef0f4;
+  --code-bg: #f6f7fa;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.45; }
+.wrap { max-width: 1600px; margin: 0 auto; padding: 8px 12px 6px; }
+.topline { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 22px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.topline .act { color: var(--fg); }
+/* Hinweis: Bis zum Teil „In echt“ ist alles ein vereinfachtes Modell (ein Stück RAM pro Programm, ohne Paging) */
+.model { margin-left: 10px; padding: 1px 9px; border: 1.5px solid var(--hl-b); border-radius: 999px; background: var(--hl); color: var(--fg);
+  font-size: 12.5px; text-transform: none; letter-spacing: 0; font-weight: 600; }
+code, .mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+code { font-size: 0.9em; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--cand); outline-offset: 2px; }
+
+/* Steuerleiste wie KGÜ 5: ←, ein Knopf pro Teil, ↺, Weiter (gelb = Zeigen, dann läuft eine Animation) */
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.parts { display: flex; gap: 5px; }
+.part { height: 32px; padding: 0 10px; border-radius: 999px; border-color: var(--line); font-size: 14px; }
+.part[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.part.seen { border-color: var(--fg); }
+#prev, #again { width: 40px; height: 36px; padding: 0; font-size: 18px; }
+#next { min-width: 170px; height: 36px; background: var(--fg); color: var(--bg); margin-left: auto; white-space: nowrap; }
+#next.play { background: var(--ptr); color: var(--fg); }
+#next:disabled { background: var(--bg); color: var(--fg); }
+
+/* Bühne: feste logische Größe, fit() skaliert sie */
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 548px; transform-origin: 0 0; }
+.lbl { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; height: 18px; display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; }
+.lbl .scale { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 13.5px; }
+.mem { position: relative; padding-top: 28px; }
+/* RAM etwas eingerückt, damit „0 GiB“ und „4 GiB“ unter dem Balken nicht abgeschnitten werden */
+.stage > .lbl, .stage > .mem, .stage > .axis { margin-left: 18px; margin-right: 22px; }
+.bar { position: relative; height: 60px; border: 2px solid var(--fg); background: var(--bg);
+  background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(12.5% - 1px), var(--line) calc(12.5% - 1px), var(--line) 12.5%); }
+.blk { position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  color: #fff; font-weight: 600; font-size: 16px; line-height: 1.15; overflow: hidden; padding: 0 2px;
+  border-left: 2px solid var(--fg); border-right: 2px solid var(--fg); margin-left: -1px;
+  transition: opacity 0.5s, transform 0.5s, box-shadow 0.3s; transform-origin: left center; }
+.blk small { font-family: var(--font-mono); font-size: 12px; font-weight: 400; opacity: 0.92; }
+.blk.os { background: var(--os); }
+.blk.in { opacity: 0; transform: scaleX(0); }
+.blk.out { opacity: 0; }
+.blk.focus { outline: 3px dashed var(--app-a); outline-offset: 3px; z-index: 2; }
+.gap { position: absolute; top: -4px; bottom: -4px; border: 3px solid transparent; border-radius: 5px; pointer-events: none; transition: border-color 0.3s, background 0.3s; }
+.gap.cand { border-color: var(--cand); border-style: dashed; background: rgba(47,95,184,0.07); }
+.gtag { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 1px 8px; border: 1.5px solid var(--line); background: var(--bg); color: var(--muted); font-family: var(--font-mono); }
+.gtag.cand { border-color: var(--cand); color: var(--cand); }
+.axis { position: relative; height: 22px; font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.axis span { position: absolute; top: 3px; transform: translateX(-50%); white-space: nowrap; }
+.axis span.odd { color: var(--line); }
+
+.lower { position: absolute; left: 0; right: 0; top: 136px; bottom: 0; display: grid; grid-template-columns: 456px 530px; gap: 14px; }
+/* Erklärung immer oben links an derselben Stelle, Werkzeuge (Lupe, Warteschlange, Baum) darunter */
+.left { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
+
+/* Lupe wie in KGÜ 1: großes Glas direkt über dem RAM, vergrößert das Stück von Programm A.
+   Sie wächst aus Block A heraus. Der Rest des RAM wird abgedunkelt. */
+.lensw { position: absolute; left: 0; top: 0; width: 1000px; height: 140px; z-index: 30; pointer-events: none; }
+.lensdim { position: absolute; inset: 0; opacity: 0; transition: opacity 0.45s; }
+.lensbody { position: absolute; inset: 0; opacity: 0; transform: scale(0.1); transform-origin: 558px 76px;
+  transition: transform 0.85s cubic-bezier(0.45, 0, 0.2, 1), opacity 0.3s; }
+.lensbody .zoom { opacity: 0; transition: opacity 0.3s; }
+.lensw.on .lensbody .zoom { opacity: 1; transition: opacity 0.45s 0.55s; }
+/* Kleine Lupe: kommt von rechts, legt sich auf Block A, dann zieht sie sich zur großen Lupe auf */
+.mglass { position: absolute; left: 880px; top: 118px; width: 100px; height: 100px; margin: -42px 0 0 -42px; z-index: 31; pointer-events: none;
+  opacity: 0; transform: scale(0.5); transform-origin: 42px 42px;
+  transition: left 0.9s cubic-bezier(0.45, 0, 0.2, 1), top 0.9s cubic-bezier(0.45, 0, 0.2, 1), opacity 0.3s, transform 0.3s; }
+.mglass.on { opacity: 1; transform: none; }
+.mglass.grow { opacity: 0; transform: scale(2.4); transition: opacity 0.5s, transform 0.6s; }
+.mglass svg { display: block; width: 100px; height: 100px; overflow: visible; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.35)); }
+.lensw.on .lensdim, .lensw.on .lensbody { opacity: 1; }
+.lensw.on .lensbody { transform: none; }
+.lensbody > svg { position: absolute; inset: 0; width: 1000px; height: 140px; overflow: visible; }
+.zoom { position: absolute; left: 162px; top: 13px; width: 656px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.zoom .lbl { margin: 0; height: 17px; font-size: 12.5px; color: var(--app-a); }
+.zoom .lbl .scale { color: var(--muted); }
+.zbar { position: relative; height: 44px; border: 2px solid var(--fg); background: var(--bg);
+  background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(6.25% - 1px), var(--line) calc(6.25% - 1px), var(--line) 6.25%); transition: border-color 0.3s; }
+.zbar.full { border-color: var(--warn); box-shadow: 0 0 0 3px var(--warn-bg); }
+.zseg { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12.5px; font-weight: 600; text-align: center; line-height: 1.1;
+  border-right: 2px solid #fff; overflow: hidden; transition: width 1.1s cubic-bezier(0.45, 0, 0.2, 1); }
+.zseg.code { background: var(--muted); }
+.zseg.heap { background: var(--app-a); }
+.bump { position: absolute; top: -27px; transform: translateX(-50%); z-index: 4; font-family: var(--font-mono); font-size: 15px; font-weight: 700; line-height: 22px; color: var(--fg);
+  background: var(--ptr); border: 2px solid var(--fg); border-radius: 6px; padding: 0 9px; white-space: nowrap; transition: left 1.1s cubic-bezier(0.45, 0, 0.2, 1); }
+.bump::after { content: ""; position: absolute; left: 50%; top: 100%; width: 7px; height: 52px; margin-left: -3.5px; background: var(--ptr); border: 2px solid var(--fg); border-top: 0; border-radius: 0 0 4px 4px; }
+.zaxis { position: relative; height: 16px; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.zaxis span { position: absolute; transform: translateX(-50%); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-family: var(--font-mono); font-size: 13.5px; background: var(--app-a); color: #fff; border-radius: 6px; padding: 2px 9px; font-weight: 600; }
+.chip.bad { background: var(--warn); }
+
+/* Erklärung */
+.explain { order: -1; flex: 1 1 auto; min-height: 0; overflow: hidden; border: 2px solid var(--fg); border-radius: 10px; padding: 9px 14px; display: grid; gap: 5px; align-content: start; font-size: 17px; line-height: 1.32; }
+.explain h3 { margin: 0; font-size: 1.18em; line-height: 1.2; text-wrap: balance; }
+.explain ul { margin: 0; padding-left: 20px; display: grid; gap: 3px; }
+.tag { font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.explain ol { margin: 0; padding-left: 22px; display: grid; gap: 3px; }
+ul.log { position: relative; list-style: none; margin: 0; padding-left: 26px; display: grid; gap: 7px; }
+ul.log li.past { color: var(--muted); }
+ul.log li.now { animation: tin 0.45s ease-out; }
+.logptr { position: absolute; left: 2px; top: 3px; width: 0; height: 0; border-top: 9px solid transparent; border-bottom: 9px solid transparent; border-left: 15px solid var(--fg); transition: top 0.45s cubic-bezier(0.45, 0, 0.2, 1); }
+.box { border-radius: 8px; padding: 6px 11px; font-size: 0.93em; }
+.box.warn { background: var(--warn-bg); border: 1.5px solid var(--warn); }
+.box.hl { background: var(--hl); border: 1.5px solid var(--hl-b); }
+
+/* rechtes Fenster */
+.panel { border: 2px solid var(--fg); border-radius: 12px; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 27px minmax(0, 1fr); min-width: 0; min-height: 0; }
+.ptitle { background: var(--fg); color: var(--bg); font-size: 14px; font-weight: 600; padding: 5px 12px; letter-spacing: 0.04em; display: flex; justify-content: space-between; gap: 12px; }
+.ptitle span { white-space: nowrap; }
+/* Tempo-Regler für die Suche der OS-Figur (nur First, Next, Best, Worst Fit) */
+.tempo { display: flex; align-items: center; gap: 7px; font-size: 13px; letter-spacing: 0; white-space: nowrap; cursor: pointer; }
+.tempo input { width: 96px; margin: 0; accent-color: var(--ptr); cursor: pointer; }
+.tempo b { font-family: var(--font-mono); min-width: 2.6em; color: var(--ptr); }
+#ptitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#pphase { flex: none; }
+.pbody { position: relative; width: 100%; height: 100%; }
+.view { position: absolute; inset: 0; transition: opacity 0.4s; }
+.view.off { opacity: 0; pointer-events: none; }
+
+/* Bildschirm */
+.screen { background: var(--scr-bg); background-image: radial-gradient(circle at 75% 20%, #f2f6fb 0, transparent 55%); overflow: hidden; }
+.menubar { height: 22px; background: rgba(255,255,255,0.7); font-size: 12px; display: flex; align-items: center; gap: 14px; padding: 0 10px; color: var(--fg); font-weight: 600; }
+.menubar .clock { margin-left: auto; font-family: var(--font-mono); font-weight: 400; }
+.dock { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 8px; padding: 7px 9px; background: var(--scr-dock); border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.12); }
+.icon { width: 46px; display: grid; justify-items: center; gap: 2px; font-size: 10px; color: var(--fg); font-weight: 600; }
+.icon .sq { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.25); transition: transform 0.15s; }
+.icon .sq.press { transform: scale(0.82); }
+.icon .run { width: 4px; height: 4px; border-radius: 50%; background: var(--fg); opacity: 0; }
+.icon .run.on { opacity: 1; }
+.win { position: absolute; width: 46%; height: 42%; background: var(--win); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.22); overflow: hidden; transition: opacity 0.35s, transform 0.35s; }
+.win.in { opacity: 0; transform: scale(0.6); }
+.win.out { opacity: 0; transform: scale(0.85); }
+.win .wbar { height: 20px; background: var(--win-bar); display: flex; align-items: center; gap: 5px; padding: 0 7px; font-size: 11px; font-weight: 600; }
+.win .wbar i { width: 9px; height: 9px; border-radius: 50%; background: #e0605a; display: inline-block; }
+.win .wbar i + i { background: #e6b84a; } .win .wbar i + i + i { background: #5bb35b; }
+.win .wbar span { margin-left: 6px; }
+.win .wbody { position: absolute; inset: 20px 0 0 0; }
+.win .wbody::before { content: ""; position: absolute; inset: 8px; border-radius: 4px; background: repeating-linear-gradient(to bottom, var(--soft) 0 8px, transparent 8px 16px); }
+.win .ram { position: absolute; right: 6px; bottom: 6px; font-family: var(--font-mono); font-size: 11px; color: #fff; padding: 1px 6px; border-radius: 4px; }
+.cursor { position: absolute; left: 60%; top: 40%; width: 22px; height: 22px; transition: left 0.8s cubic-bezier(.4,.1,.2,1), top 0.8s cubic-bezier(.4,.1,.2,1); z-index: 20; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.35)); }
+.ripple { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 3px solid var(--fg); opacity: 0; z-index: 19; pointer-events: none; }
+.ripple.go { animation: rip 0.5s ease-out; }
+@keyframes rip { from { opacity: 0.8; transform: scale(0.3); } to { opacity: 0; transform: scale(1.4); } }
+
+/* CPU-Ansicht */
+.cpu { background: var(--bg); display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+.csrc { padding: 7px 12px; border-bottom: 1.5px solid var(--line); font-family: var(--font-mono); font-size: 12.5px; line-height: 1.4; background: var(--code-bg); overflow-x: auto; white-space: pre; }
+.csrc .now { background: var(--hl); outline: 1.5px solid var(--hl-b); border-radius: 3px; animation: srcin 0.4s ease-out; }
+@keyframes srcin { from { background: transparent; outline-color: transparent; } }
+.csrc .cm { color: var(--muted); }
+.asm { position: relative; padding: 5px 12px 5px 40px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.32; overflow: hidden; }
+.asm .ln { position: relative; z-index: 1; display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; border-radius: 4px; padding: 0 4px; white-space: nowrap; }
+.asm .ln .ad { color: var(--muted); }
+.asm .ln.cm { color: var(--muted); grid-template-columns: minmax(0, 1fr); }
+/* Gelber Balken unter der aktuellen Zeile: gleitet mit dem PC mit, statt zu springen */
+.pcbar { position: absolute; z-index: 0; background: var(--hl); outline: 1.5px solid var(--hl-b); border-radius: 4px; transition: top 0.32s cubic-bezier(0.45, 0, 0.2, 1), opacity 0.2s; }
+.asm .ln.call b { color: var(--app-a); }
+.pcarrow { position: absolute; left: 8px; font-family: var(--font-mono); font-weight: 700; color: var(--hl-b); transition: top 0.32s cubic-bezier(0.45, 0, 0.2, 1); font-size: 13px; }
+.cbubble { position: absolute; right: 10px; bottom: 10px; max-width: 62%; background: var(--fg); color: var(--bg); font-size: 14px; border-radius: 10px; padding: 7px 11px; transition: opacity 0.3s; }
+.cbubble.off { opacity: 0; }
+.cbubble.bad { background: var(--warn); }
+.cpu-chip { position: absolute; right: 10px; top: 8px; font-family: var(--font-mono); font-size: 12px; border: 1.5px solid var(--fg); border-radius: 6px; padding: 2px 8px; background: var(--bg); }
+
+/* OS-Figur: oben klein die Figur + Regel, darunter groß die Sprechblase */
+.osv { background: #f3f4f7; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; padding: 10px 12px 12px; }
+.osv.p1 { grid-template-rows: minmax(0, 1fr); align-items: center; }
+.ostop { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; align-items: center; }
+.osv.p1 .ostop { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); }
+.fig { position: relative; }
+.fig svg { display: block; width: 100%; overflow: visible; animation: float 3.2s ease-in-out infinite; }
+.osfig { justify-self: center; width: 100%; max-width: 190px; transition: opacity 0.3s; }
+.osfig.away { opacity: 0.18; }
+@keyframes float { 50% { transform: translateY(-5px); } }
+.fig .pupil { transition: transform 0.6s; }
+.fig.think .pupil { transform: translate(5px, -6px); }
+.fig .brow { transition: transform 0.6s; transform-box: fill-box; transform-origin: center; }
+.fig.think .brow { transform: translateY(-4px) rotate(-6deg); }
+.fig.sad .brow { transform: translateY(2px) rotate(8deg); }
+.fig .eyes { transform-box: fill-box; transform-origin: center; animation: blinkeye 4.6s infinite; }
+@keyframes blinkeye { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.08); } }
+.fig .mouth { transform-box: fill-box; transform-origin: center; }
+.fig.talking .mouth { animation: yap 0.26s ease-in-out infinite alternate; }
+@keyframes yap { from { transform: scaleY(0.5); } to { transform: scaleY(1.9); } }
+.fig .arm { transform-box: fill-box; transform-origin: 50% 12%; transition: transform 0.45s; }
+.fig.happy .arm.l { transform: rotate(150deg); animation: wavel 0.3s ease-in-out 0.45s 4 alternate; }
+.fig.happy .arm.r { transform: rotate(-150deg); animation: waver 0.3s ease-in-out 0.45s 4 alternate; }
+@keyframes wavel { to { transform: rotate(125deg); } }
+@keyframes waver { to { transform: rotate(-125deg); } }
+.fig.think .arm.r { transform: rotate(-35deg); }
+.fig .bulb { transition: fill 0.3s; }
+.fig.think .bulb, .runner .bulb { animation: glow 0.8s ease-in-out infinite alternate; }
+@keyframes glow { to { fill: #ffd400; } }
+.fig .hg { position: absolute; left: -4px; top: -6px; width: 24px; height: 28px; opacity: 0; transition: opacity 0.3s; }
+.fig .hg svg, .runner .mag svg { display: block; width: 100%; height: 100%; animation: none; }
+.fig.slow .hg { opacity: 1; animation: spin 1.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* Läufer: dieselbe Figur, die zum Suchen in den RAM fliegt */
+.runner { position: absolute; left: 0; top: 0; width: 60px; z-index: 40; pointer-events: none; opacity: 0; transform-origin: 0 0;
+  transition: transform calc(0.7s / var(--sp, 1)) cubic-bezier(.45,.05,.3,1), opacity 0.25s; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.4)); }
+.runner.on { opacity: 1; }
+.runner .mag { position: absolute; right: -16px; bottom: -6px; width: 28px; height: 28px; }
+.runner .hg { left: -14px; top: -10px; width: 18px; height: 22px; }
+.runner .arm.r { transform: rotate(-70deg); }
+.osside { display: grid; gap: 10px; align-content: center; min-width: 0; }
+.letter { background: var(--bg); border: 2px solid var(--warn); border-radius: 8px; padding: 9px 12px; font-size: 16px; transition: transform 0.7s cubic-bezier(.3,.1,.2,1), opacity 0.5s; }
+.letter.in { transform: translate(-60%, -40%) scale(0.5); opacity: 0; }
+.letter .from { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--warn); font-weight: 700; }
+.thought { position: relative; background: var(--bg); border: 2px solid var(--fg); border-radius: 16px; padding: 9px 13px; font-size: 17px; transition: opacity 0.5s; }
+.thought.off { opacity: 0; }
+.thought .dots span { display: inline-block; animation: bob 1.2s infinite; font-weight: 700; }
+.thought .dots span:nth-child(2) { animation-delay: 0.2s; } .thought .dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bob { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-4px); } }
+.thought ul { margin: 4px 0 0; padding-left: 18px; }
+
+.alert { position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%); z-index: 30; background: var(--warn); color: #fff; font-weight: 700; padding: 6px 14px; border-radius: 8px; white-space: nowrap; font-size: 15px; box-shadow: 0 4px 14px rgba(194,65,12,0.4); transition: opacity 0.3s; }
+.alert.off { opacity: 0; }
+.alert.blink { animation: blink 0.5s 3; }
+@keyframes blink { 50% { opacity: 0.25; } }
+.note { font-size: 15px; color: var(--muted); max-width: 95ch; }
+.alert.top { top: 10px; bottom: auto; }
+
+/* Teil 2: Strategien im RAM */
+.blk.tiny { font-size: 12px; }
+.blk.hot { box-shadow: inset 0 0 0 4px var(--warn); animation: pulse 0.9s 3; }
+@keyframes pulse { 50% { box-shadow: inset 0 0 0 7px var(--warn); } }
+.gap.crumb { border-color: var(--warn); border-style: dashed; background: rgba(194,65,12,0.14); }
+.gap.check { border-color: var(--hl-b); border-style: solid; background: var(--hl); }
+.gap.ok { border-color: var(--pick); border-style: solid; background: rgba(31,122,77,0.14); }
+.gap.no { border-color: var(--warn); border-style: solid; background: rgba(194,65,12,0.1); }
+.gtag.crumb { border-color: var(--warn); color: var(--warn); }
+.gtag.check { border-color: var(--hl-b); color: var(--fg); background: var(--hl); }
+.gtag.ok { border-color: var(--pick); color: var(--pick); }
+.gtag.no { border-color: var(--warn); color: var(--warn); }
+.gtag.ok, .gtag.no { font-size: 14.5px; font-weight: 700; z-index: 3; background: var(--bg); }
+.gtag.pick { background: var(--pick); color: #fff; border-color: var(--pick); }
+/* Zeiger von Next Fit: dicker gelber Strich durch den RAM + Schild darunter */
+.nfptr { position: absolute; top: 18px; height: 76px; width: 8px; margin-left: -4px; background: var(--ptr); border: 2px solid var(--fg); border-radius: 4px; z-index: 45; pointer-events: none; transition: left calc(0.9s / var(--sp, 1)) cubic-bezier(.45,.05,.3,1); }
+.nfptr span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); font-family: var(--font-mono); font-size: 15px; font-weight: 700; line-height: 20px; color: var(--fg);
+  background: var(--ptr); border: 2px solid var(--fg); border-radius: 6px; padding: 0 9px; white-space: nowrap; }
+.nfptr.pulse { animation: ppulse 0.5s ease-in-out 4 alternate; }
+@keyframes ppulse { to { box-shadow: 0 0 0 9px rgba(255,212,0,0.55); } }
+.ghost { position: absolute; top: -10px; bottom: -10px; border: 2.5px dashed var(--fg); border-radius: 6px; pointer-events: none; z-index: 3; }
+.ghostgame { position: absolute; top: 6px; bottom: 6px; border: 2.5px dashed var(--pick); background: rgba(77,124,15,0.2); border-radius: 5px; display: flex; align-items: flex-end; padding-bottom: 5px; justify-content: center; z-index: 4; pointer-events: none; transform-origin: left center; animation: gin 0.7s ease-out; }
+.ghostgame span { background: var(--bg); color: var(--pick); font-weight: 700; font-size: 13px; padding: 1px 8px; border-radius: 999px; border: 1.5px solid var(--pick); white-space: nowrap; }
+@keyframes gin { from { opacity: 0; transform: scaleX(0.2); } }
+
+/* Warteschlange links */
+.queue { flex: none; border: 2px solid var(--fg); border-radius: 10px; padding: 7px 12px; display: grid; gap: 4px; }
+.qhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.qhead b { font-size: 18px; }
+.cnt { font-family: var(--font-mono); font-size: 15px; }
+.cnt b { font-size: 22px; }
+.qrows { display: grid; gap: 2px; }
+.qrow { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 15.5px; }
+.qrow .sw { width: 14px; height: 14px; border-radius: 3px; }
+.qrow .st { font-family: var(--font-mono); font-size: 13px; border-radius: 999px; padding: 0 8px; border: 1.5px solid var(--line); color: var(--muted); white-space: nowrap; }
+.qrow .st.run { border-color: var(--hl-b); background: var(--hl); color: var(--fg); }
+.qrow .st.ok { border-color: var(--pick); color: var(--pick); }
+.qrow .st.bad { border-color: var(--warn); background: var(--warn); color: #fff; }
+
+/* OS denkt laut */
+.rule { background: var(--fg); color: var(--bg); border-radius: 10px; padding: 7px 12px; font-size: 16px; line-height: 1.33; }
+.rule .rtag { display: inline-block; font-weight: 700; background: #ffd76a; color: var(--fg); border-radius: 4px; padding: 0 6px; margin-right: 4px; }
+.rule b { color: #ffd76a; }
+.talkbox { position: relative; min-height: 0; display: grid; }
+.talkbox::before { content: ""; position: absolute; left: 44px; top: -9px; width: 18px; height: 18px; background: var(--bg); border-left: 2px solid var(--fg); border-top: 2px solid var(--fg); transform: rotate(45deg); z-index: 1; }
+.talk { background: var(--bg); border: 2px solid var(--fg); border-radius: 16px; padding: 10px 14px; font-size: 18px; line-height: 1.28; display: grid; gap: 6px; min-height: 0; overflow-y: auto; align-content: start; }
+.tl.new { animation: tin 0.35s ease-out; }
+@keyframes tin { from { opacity: 0; transform: translateY(5px); } }
+.tl.req { font-weight: 700; }
+.tl .ok, .okc { color: var(--pick); font-weight: 700; }
+.tl .no, .badc { color: var(--warn); font-weight: 700; }
+.tl.good { color: var(--pick); font-weight: 600; }
+.tl.bad { color: var(--warn); font-weight: 700; }
+.vrow { display: inline-flex; gap: 3px; vertical-align: middle; margin-right: 8px; }
+.vpg { display: inline-block; min-width: 1.7em; text-align: center; padding: 1px 0; border-radius: 4px; background: var(--app-a); color: #fff; font-weight: 700; }
+.hint { margin: 0; color: var(--muted); font-size: 0.92em; }
+.explain .rest { animation: tin 0.45s ease-out; display: grid; gap: 8px; }
+
+/* Gedankenexperiment: 100 Lücken */
+.race { background: var(--bg); padding: 12px 14px; display: grid; gap: 12px; align-content: start; overflow: hidden; }
+.rintro { font-size: 14.5px; }
+.fitk { color: var(--pick); font-weight: 700; }
+.rrow { display: grid; gap: 5px; }
+.rhead { display: flex; justify-content: space-between; font-weight: 600; font-size: 15px; gap: 8px; }
+.rcount { font-family: var(--font-mono); }
+.rgrid { display: grid; grid-template-columns: repeat(20, minmax(0, 1fr)); gap: 3px; }
+.rc { border-radius: 3px; background: var(--soft); border: 1.5px solid var(--line); font-family: var(--font-mono); font-size: 10.5px; text-align: center; line-height: 17px; color: var(--muted); }
+.rc.fit { border-color: var(--pick); color: var(--pick); }
+.rc.seen { background: #e3e6ee; }
+.rc.best { background: #cfe8da; }
+.rc.now { background: var(--hl); border-color: var(--hl-b); color: var(--fg); }
+.rc.pick { background: var(--pick); border-color: var(--pick); color: #fff; font-weight: 700; }
+
+/* Vergleich */
+.cmpv { background: var(--bg); padding: 12px 14px; display: grid; gap: 12px; align-content: start; overflow: hidden; }
+.cintro { font-size: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.lg { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; }
+.lg i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.mrow { display: grid; gap: 3px; }
+.mhead { display: flex; justify-content: space-between; font-size: 14.5px; font-weight: 600; gap: 8px; }
+.mbar { position: relative; height: 34px; border: 1.5px solid var(--fg); background: var(--bg); }
+.mbar div { position: absolute; top: 0; bottom: 0; border-left: 1px solid #fff; }
+.mbar .h { background: rgba(194,65,12,0.08); border: 1.5px dashed var(--warn); }
+.mfoot { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+.cmpt { border-collapse: collapse; font-size: 0.9em; width: 100%; }
+.cmpt th, .cmpt td { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; }
+.cmpt th { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.cmpt td.mono { font-family: var(--font-mono); font-size: 14px; }
+
+/* Teil 3: Buddy-System (eigener Speicher mit 64 MiB) */
+.bfree { position: absolute; top: 0; bottom: 0; margin-left: -1px; border: 3px dashed var(--pick); background: rgba(31,122,77,0.10); color: var(--pick);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; line-height: 1.15; overflow: hidden; }
+.bfree small { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.blk.bud { flex-direction: row; align-items: stretch; padding: 0; }
+.blk.bud .bu { flex: 0 0 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+.blk.bud .waste { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; text-align: center; overflow: hidden;
+  border-left: 2px dashed #fff; color: var(--fg); font-size: 13px; font-weight: 700; line-height: 1.15;
+  background: repeating-linear-gradient(45deg, rgba(255,255,255,0.9) 0 7px, rgba(255,255,255,0.68) 7px 14px); }
+.bfree.fresh, .blk.fresh, .tn.fresh { animation: bpop 0.55s ease-out; }
+@keyframes bpop { from { opacity: 0; transform: scaleY(0.25); } }
+.bhl { position: absolute; top: -5px; bottom: -5px; border: 4px solid var(--hl-b); border-radius: 6px; pointer-events: none; z-index: 5; background: rgba(255,244,194,0.35); animation: tin 0.3s ease-out; }
+.bhl.ok { border-color: var(--pick); background: rgba(31,122,77,0.16); }
+.bhl.no { border-color: var(--warn); background: rgba(194,65,12,0.12); }
+.bbox { flex: none; border: 2px solid var(--fg); border-radius: 10px; padding: 6px 12px 8px; display: grid; gap: 4px; }
+.bhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; line-height: 1.25; }
+.bhead b { font-size: 15px; }
+.bhead .leg { color: var(--muted); font-size: 13px; }
+.bhead .leg i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin: 0 3px 0 8px; vertical-align: -1px; }
+.btree { display: grid; gap: 3px; }
+.btree { gap: 2px; }
+.trow { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 6px; align-items: center; }
+.tsz { font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-align: right; }
+.tline { position: relative; height: 16px; }
+.tn { position: absolute; top: 0; bottom: 0; border-radius: 4px; border: 1.5px solid var(--bg); display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; overflow: hidden; white-space: nowrap; }
+.tn.sp { background: #e3e6ec; color: var(--muted); }
+.tn.fr { background: #cfead9; color: #14532d; box-shadow: inset 0 0 0 1.5px var(--pick); }
+.tn.us { color: #fff; }
+.blists { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.bcell { position: relative; border: 2px solid var(--line); border-radius: 8px; padding: 2px 4px 3px; text-align: center; display: grid; gap: 0; font-size: 12.5px; color: var(--muted); line-height: 1.15; transition: border-color 0.25s, background 0.25s; }
+.bcell b { font-family: var(--font-mono); font-size: 14px; color: var(--fg); }
+.bcell.has { border-color: var(--pick); }
+.bcell.has span { color: var(--pick); font-weight: 700; }
+.bcell.check { border-color: var(--hl-b); background: var(--hl); }
+.bcell.ok { border-color: var(--pick); background: rgba(31,122,77,0.14); }
+.bcell.no { border-color: var(--warn); background: rgba(194,65,12,0.08); }
+.bcell i { position: absolute; top: -9px; right: -5px; width: 22px; height: 22px; border-radius: 50%; font-style: normal; font-weight: 700; font-size: 14px; line-height: 22px; color: #fff; animation: tin 0.3s ease-out; }
+.bcell.ok i { background: var(--pick); } .bcell.no i { background: var(--warn); }
+@media (prefers-reduced-motion: reduce) {
+  .blk, .zseg, .bump, .win, .cursor, .letter, .pcarrow, .view, .fig .pupil, .fig .brow, .fig .arm, .runner, .nfptr, .pcbar, .mglass, .lensbody, .lensbody .zoom { transition: none; }
+  .ripple.go, .alert.blink, .thought .dots span, .blk.hot, .ghostgame, .tl.new, .fig.slow .hg, .fig svg, .fig .eyes, .fig.talking .mouth, .fig .arm, .fig .bulb, .nfptr.pulse, .explain .rest, .bfree.fresh, .blk.fresh, .tn.fresh, .bhl, .bcell i { animation: none !important; }
+}
+</style>
+
+<main class="wrap">
+  <div class="topline"><span><span class="act">Wie bekommt ein Programm Speicher?</span> · <span id="act"></span><span class="model" id="model" title="Echte Betriebssysteme benutzen Paging. Das zeigt der Teil „In echt“ am Ende.">Vereinfachtes Modell, ohne Paging</span></span><span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+      <div class="fig runner" id="runner" aria-hidden="true"></div>
+      <div class="lbl"><span id="ramlbl">RAM des Rechners: 4 GiB</span><span class="scale" id="scale">Ein Kasten = 512 MiB. Werte ungefähr wie auf einem echten Rechner mit 4 GiB RAM.</span><span id="ramunit" hidden></span></div>
+      <div class="mem"><div class="bar" id="bar"></div><div class="nfptr" id="nfptr" hidden><span>▲ Zeiger</span></div></div>
+      <div class="axis" id="axis"></div>
+      <div class="mglass" id="mglass" aria-hidden="true"><svg viewBox="0 0 100 100">
+        <path d="M70 70 L94 94" stroke="#2b303b" stroke-width="13" stroke-linecap="round"/>
+        <path d="M80 80 L92 92" stroke="#5d6370" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="42" cy="42" r="34" fill="rgba(247,249,254,0.25)" stroke="#2b303b" stroke-width="8"/>
+        <circle cx="42" cy="42" r="28" fill="none" stroke="#c9ced8" stroke-width="2"/>
+        <path d="M22 30 q8 -12 22 -14" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+      </svg></div>
+      <div class="lensw" id="lensw" aria-hidden="true">
+        <svg class="lensdim" viewBox="0 0 1000 140"><defs><mask id="lmask"><rect width="1000" height="140" fill="#fff"/><rect x="140" y="4" width="700" height="130" rx="28" fill="#000"/></mask></defs>
+          <rect width="1000" height="140" fill="rgba(22,24,29,0.5)" mask="url(#lmask)"/></svg>
+        <div class="lensbody">
+          <svg viewBox="0 0 1000 140">
+            <path d="M836 104 L896 132" stroke="#2b303b" stroke-width="22" stroke-linecap="round"/>
+            <path d="M866 119 L893 131" stroke="#5d6370" stroke-width="8" stroke-linecap="round"/>
+            <rect x="140" y="4" width="700" height="130" rx="28" fill="#f7f9fe" stroke="#2b303b" stroke-width="10"/>
+            <rect x="146" y="10" width="688" height="118" rx="23" fill="none" stroke="#c9ced8" stroke-width="2"/>
+            <path d="M166 30 q26 -16 80 -15" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+          </svg>
+          <div class="zoom" id="zoom">
+            <div class="lbl"><span>Lupe: das Stück von Programm A · 256 MiB</span><span class="scale">1 Kasten = 16 MiB</span></div>
+            <div style="position:relative; padding-top:28px"><div class="zbar" id="zbar"></div></div>
+            <div class="zaxis" id="zaxis"></div>
+            <div class="chips" id="chips" hidden></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lower">
+        <div class="left">
+          <div class="explain" id="explain" aria-live="polite"></div>
+          <div class="queue" id="queue" hidden>
+            <div class="qhead"><b id="qname"></b><span class="cnt">Vergleiche: <b id="qcnt">0</b></span></div>
+            <div class="qrows" id="qrows"></div>
+          </div>
+          <div class="bbox" id="bbox" hidden>
+            <div class="bhead"><b>Baum der Blöcke</b><span class="leg"><i style="background:#cfead9; box-shadow: inset 0 0 0 1.5px var(--pick)"></i>frei<i style="background:var(--app-a)"></i>belegt<i style="background:#e3e6ec"></i>geteilt</span></div>
+            <div class="btree" id="btree"></div>
+            <div class="bhead"><b>Listen der freien Blöcke</b><span class="leg">eine Liste je Größe (= Ebene im Baum)</span></div>
+            <div class="blists" id="blists"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="ptitle"><span id="ptitle">Bildschirm des Nutzers</span><span id="pphase"></span><label class="tempo" id="tempo" hidden title="Wie schnell die OS-Figur die Lücken absucht">Tempo <input id="tempoIn" type="range" min="1" max="3" step="0.5" value="2"><b id="tempoV">2×</b></label></div>
+          <div class="pbody" id="pbody">
+            <div class="view screen" id="vScreen">
+              <div class="menubar"><span></span><span>Ablage</span><span>Bearbeiten</span><span class="clock">10:15</span></div>
+              <div id="wins"></div>
+              <div class="dock" id="dock"></div>
+              <div class="ripple" id="ripple"></div>
+              <svg class="cursor" id="cursor" viewBox="0 0 22 22"><path d="M3 2 L3 18 L7.5 13.8 L10.6 20.5 L13.4 19.2 L10.4 12.6 L16.5 12.6 Z" fill="#fff" stroke="#16181d" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            </div>
+
+            <div class="view cpu off" id="vCpu">
+              <div class="csrc" id="csrc"></div>
+              <div class="asm" id="asm"><span class="pcbar" id="pcbar"></span><span class="pcarrow" id="pcarrow">PC▶</span></div>
+              <div class="cbubble off" id="cbubble"></div>
+            </div>
+
+            <div class="view osv off" id="vOs">
+              <div class="ostop">
+                <div class="fig osfig" id="osfig">
+                  <svg viewBox="0 0 200 210" aria-label="Das Betriebssystem als Figur">
+                  <g class="arm l"><rect x="4" y="92" width="22" height="64" rx="11" fill="#3a3f4b"/></g>
+                  <g class="arm r"><rect x="174" y="92" width="22" height="64" rx="11" fill="#3a3f4b"/></g>
+                  <rect x="22" y="30" width="156" height="140" rx="46" fill="#3a3f4b"/>
+                  <rect x="40" y="48" width="120" height="104" rx="34" fill="#4a505e"/>
+                  <text x="100" y="72" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="16" font-weight="700" fill="#c9ced8">OS</text>
+                  <g class="brow"><rect x="56" y="82" width="28" height="5" rx="2.5" fill="#c9ced8"/></g>
+                  <g class="brow"><rect x="116" y="82" width="28" height="5" rx="2.5" fill="#c9ced8"/></g>
+                  <g class="eyes">
+                    <circle cx="70" cy="104" r="15" fill="#fff"/><circle cx="130" cy="104" r="15" fill="#fff"/>
+                    <circle class="pupil" cx="70" cy="106" r="6.5" fill="#16181d"/><circle class="pupil" cx="130" cy="106" r="6.5" fill="#16181d"/>
+                  </g>
+                  <path class="mouth" d="M84 134 Q100 144 116 134" stroke="#c9ced8" stroke-width="4" fill="none" stroke-linecap="round"/>
+                  <circle cx="52" cy="128" r="6" fill="#e58a7a" opacity="0.55"/><circle cx="148" cy="128" r="6" fill="#e58a7a" opacity="0.55"/>
+                  <rect x="88" y="10" width="24" height="22" rx="6" fill="#3a3f4b"/><circle class="bulb" cx="100" cy="8" r="7" fill="#b7790c"/>
+                  <rect x="60" y="170" width="80" height="26" rx="8" fill="#3a3f4b"/>
+                </svg>
+                  <span class="hg" aria-hidden="true"><svg viewBox="0 0 24 28" aria-hidden="true"><path d="M5 2h14M5 26h14M7 2c0 7 10 7 10 12S7 19 7 26M17 2c0 7-10 7-10 12s10 5 10 12" fill="#fff" stroke="#16181d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 23h4l-2-3z" fill="#b7790c"/></svg></span>
+                </div>
+                <div class="osside">
+                  <div class="letter" id="letter"><div class="from">Systemaufruf von Programm A</div>„Mein Stück ist voll. Gib mir bitte ein neues Stück mit <b>256 MiB</b>.“</div>
+                  <div class="thought off" id="thought"></div>
+                  <div class="rule" id="rule" hidden></div>
+                </div>
+              </div>
+              <div class="talkbox" id="talkbox" hidden><div class="talk" id="talk" aria-live="polite"></div></div>
+            </div>
+
+            <div class="view race off" id="vRace">
+              <div class="rintro">Ein Programm will <b>50 MiB</b>. Jedes Kästchen ist eine freie Lücke, die Zahl ist ihre Größe in MiB. <span class="fitk">Grün umrandet</span> = passt.</div>
+              <div class="rrow"><div class="rhead"><span>First Fit</span><span class="rcount" id="rcFF"></span></div><div class="rgrid" id="rgFF"></div></div>
+              <div class="rrow"><div class="rhead"><span>Best Fit</span><span class="rcount" id="rcBF"></span></div><div class="rgrid" id="rgBF"></div></div>
+            </div>
+
+            <div class="view cmpv off" id="vCmp"></div>
+            <div class="alert off" id="alert">Kein Platz mehr im Stück → Systemaufruf!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ctl">
+    <button id="prev" type="button" aria-label="Zurück" title="Zurück (←)">←</button>
+    <div class="parts" id="parts" role="group" aria-label="Teil wählen"></div>
+    <button id="again" type="button" aria-label="Etappe nochmal abspielen" title="Nochmal abspielen (R)">↺</button>
+    <button id="next" type="button">Weiter →</button>
+  </div>
+</main>
+
+<script>
+(() => {
+  const RAM = 4096;                                   // MiB
+  const pct = m => (m / RAM * 100) + '%';
+  const APPS = {
+    discord: { name: 'Discord', letter: 'D', col: 'var(--app-discord)', start: 1024, size: 448, win: [6, 12] },
+    spotify: { name: 'Spotify', letter: '♪', col: 'var(--app-spotify)', start: 1472, size: 384, win: [18, 18] },
+    mail:    { name: 'Mail', letter: 'M', col: 'var(--app-mail)', start: 1856, size: 320, win: [30, 24] },
+    a:       { name: 'Bildbetrachter', short: 'A', letter: 'A', col: 'var(--app-a)', start: 2176, size: 256, win: [42, 14] },
+    chrome:  { name: 'Chrome', letter: 'C', col: 'var(--app-chrome)', start: 2432, size: 1024, win: [10, 34] },
+    code:    { name: 'VS Code', letter: '{}', col: 'var(--app-code)', start: 3456, size: 640, win: [50, 30] }
+  };
+  const ORDER = ['discord', 'spotify', 'mail', 'a', 'chrome', 'code'];
+  const CLOSE = ['discord', 'mail', 'chrome'];
+  const GAPS = [{ s: 1024, n: 448, name: 'L1' }, { s: 1856, n: 320, name: 'L2' }, { s: 2432, n: 1024, name: 'L3' }];
+  const ALLOC = [ // im Stück von A, MiB
+    { name: 'foto1', n: 92, c: 'foto1 = malloc(6000*4000*4)' },
+    { name: 'thumbs', n: 40, c: 'thumbs = malloc(40 << 20)' },
+    { name: 'foto2', n: 92, c: 'foto2 = malloc(6000*4000*4)' },
+    { name: 'foto3', n: 92, c: 'foto3 = malloc(6000*4000*4)' }
+  ];
+  const CODE_MIB = 16;
+  const ASM = [
+    { t: '; foto1 = malloc(6000*4000*4)', cm: 1 },
+    { a: '401136', t: 'mov   edi, 96000000' },
+    { a: '40113b', t: 'call  <b>malloc</b>', call: 0 },
+    { a: '401140', t: 'mov   [rbp-8], rax' },
+    { t: '; thumbs = malloc(40 << 20)', cm: 1 },
+    { a: '401144', t: 'mov   edi, 41943040' },
+    { a: '401149', t: 'call  <b>malloc</b>', call: 1 },
+    { a: '40114e', t: 'mov   [rbp-16], rax' },
+    { t: '; foto2 = malloc(6000*4000*4)', cm: 1 },
+    { a: '401152', t: 'mov   edi, 96000000' },
+    { a: '401157', t: 'call  <b>malloc</b>', call: 2 },
+    { a: '40115c', t: 'mov   [rbp-24], rax' },
+    { t: '; foto3 = malloc(6000*4000*4)', cm: 1 },
+    { a: '401160', t: 'mov   edi, 96000000' },
+    { a: '401165', t: 'call  <b>malloc</b>', call: 3 }
+  ];
+  const SRC = [
+    '<span class="cm">// bildbetrachter.c  (Programm A)</span>',
+    '<span class="cm">// 1 Foto: 6000 × 4000 Pixel × 4 Byte = 96 000 000 Byte ≈ 92 MiB</span>',
+    'uint8_t *foto1  = malloc(6000 * 4000 * 4);',
+    'uint8_t *thumbs = malloc(40 << 20);   <span class="cm">// 40 MiB Vorschaubilder</span>',
+    'uint8_t *foto2  = malloc(6000 * 4000 * 4);',
+    'uint8_t *foto3  = malloc(6000 * 4000 * 4);'
+  ];
+
+  // ---------- Teil 2: dieselben 4 Anfragen mit jeder Strategie ----------
+  const fmt = n => n >= 1024 && n % 256 === 0 ? (n / 1024).toString().replace('.', ',') + ' GiB' : n + ' MiB';
+  const REQ = [
+    { id: 'a2', name: 'Programm A', short: 'A₂', n: 256, col: 'var(--app-a)' },
+    { id: 'zoom', name: 'Zoom', short: 'Zoom', n: 300, col: 'var(--app-zoom)' },
+    { id: 'notiz', name: 'Notizen', short: 'Notiz', n: 128, col: 'var(--app-notiz)' },
+    { id: 'spiel', name: 'Ein Spiel', short: 'Spiel', n: 900, col: 'var(--app-spiel)' }
+  ];
+  const STRAT = {
+    ff: { name: 'First Fit', rule: 'Nimm die <b>erste</b> Lücke, die groß genug ist.' },
+    nf: { name: 'Next Fit', rule: 'Wie First Fit, aber suche dort <b>weiter</b>, wo du zuletzt etwas hingelegt hast.' },
+    bf: { name: 'Best Fit', rule: 'Nimm die <b>kleinste</b> Lücke, in die es passt.' },
+    wf: { name: 'Worst Fit', rule: 'Nimm die <b>größte</b> Lücke.' }
+  };
+  const INTRO = {
+    ff: ['Ich probiere <b>First Fit</b>. Regel: die <b>erste</b> Lücke, die passt.', 'Also fange ich ganz links an und schaue eine Lücke nach der anderen an.'],
+    nf: ['Jetzt <b>Next Fit</b>. Regel: wie First Fit, aber ich suche dort <b>weiter</b>, wo ich zuletzt etwas hingelegt habe.', 'Ich habe noch nichts hingelegt. Mein Zeiger steht also ganz vorne bei L1.'],
+    bf: ['Jetzt <b>Best Fit</b>. Regel: die <b>kleinste</b> Lücke, in die es passt.', 'Dafür muss ich <b>alle</b> Lücken anschauen. Sonst weiß ich nicht, welche die kleinste ist.'],
+    wf: ['Zum Schluss <b>Worst Fit</b>. Regel: die <b>größte</b> Lücke.', 'Meine Idee: Dann bleibt ein großer Rest übrig, mit dem ich noch etwas anfangen kann.', 'Auch dafür muss ich <b>alle</b> Lücken anschauen.']
+  };
+  // Spielt die ersten k Anfragen mit einer Strategie durch (Lücken nach Adresse sortiert)
+  function sim(strat, k) {
+    const holes = GAPS.map(g => ({ s: g.s, n: g.n, name: g.name }));
+    let ptr = 0, cmp = 0; const placed = [], logs = [];
+    for (let r = 0; r < k; r++) {
+      const q = REQ[r], visits = []; let pick = -1;
+      const before = holes.map(h => ({ ...h })), ptrBefore = ptr;
+      if (strat === 'ff' || strat === 'nf') {
+        const st = strat === 'nf' ? ptr : 0;
+        for (let j = 0; j < holes.length; j++) { const i = (st + j) % holes.length, ok = holes[i].n >= q.n; visits.push({ i, n: holes[i].n, ok }); if (ok) { pick = i; break; } }
+      } else {
+        holes.forEach((h, i) => { const ok = h.n >= q.n; visits.push({ i, n: h.n, ok });
+          if (ok && (pick < 0 || (strat === 'bf' ? h.n < holes[pick].n : h.n > holes[pick].n))) pick = i; });
+      }
+      cmp += visits.length; logs.push({ r, visits, pick, before, ptrBefore });
+      if (pick >= 0) { placed.push(Object.assign({}, q, { s: holes[pick].s })); holes[pick].s += q.n; holes[pick].n -= q.n; if (strat === 'nf') ptr = pick; }
+    }
+    return { holes, placed, logs, cmp, ptr };
+  }
+
+  // ---------- Zustand je Schritt ----------
+  // open: offene Apps; zoom: Anzahl erfüllter mallocs (null = Lupe aus); view: screen|cpu|os|race|cmp
+  // strat/k: Teil 2, Strategie und Anzahl erledigter Anfragen
+  const base = { open: [], view: 'screen', zoom: null, fail: false, pc: -1, src: -1, bubble: '', gaps: '', think: false, alert: false, strat: null, k: 0, face: '' };
+  const S = [];
+  const add = (o) => S.push(Object.assign({}, base, S.length ? S[S.length - 1] : {}, { bubble: '', alert: false, anim: null, marks: '', script: null, alertText: '', t0: '', log: null }, o));
+
+  // Teil „Start“: Statt bei jedem Programm alles neu zu erklären, wächst links eine Liste um eine Zeile.
+  // Ein Pfeil zeigt auf die Zeile, die gerade passiert.
+  const LOG = [
+    'Der Rechner hat <b>4 GiB RAM</b>. Vorne liegt das <b>Betriebssystem</b> (OS). Es verteilt den Rest an die Programme.',
+    'Discord startet → das OS gibt ihm <b>ein zusammenhängendes Stück</b>: 448 MiB. Darin liegen Code, Stack und Daten.',
+    'Spotify → 384 MiB',
+    'Mail → 320 MiB',
+    '<b>Programm A</b>, ein kleiner Bildbetrachter in C → 256 MiB',
+    'Chrome → 1 GiB',
+    'VS Code → 640 MiB. Jetzt ist der RAM <b>voll</b>.',
+    'Discord, Mail und Chrome werden geschlossen → drei <b>Lücken</b>. Zusammen fast 1,8 GiB frei, aber nicht an einem Stück.'
+  ];
+  const T1 = 'Das OS verteilt den RAM';
+  add({ phase: 'Bildschirm', t: T1, log: 0, h: '' });
+  ORDER.forEach((k, i) => add({ open: ORDER.slice(0, i + 1), anim: { type: 'open', app: k }, phase: 'Bildschirm', t: T1, log: i + 1, h: '' }));
+  add({ open: ORDER.filter(k => !CLOSE.includes(k)), anim: { type: 'close' }, gaps: 'show', phase: 'Bildschirm', t: T1, log: 7, h: '' });
+  add({ view: 'cpu', zoom: 0, pc: 0, src: -1, anim: { type: 'lens' }, phase: 'Programm A',
+    t: 'Lupe auf Programm A: was steckt in seinem Stück?',
+    h: `<ul><li>Oben die <b>Lupe</b>: das Stück von Programm A, vergrößert. Vorne liegt sein <b>Maschinencode</b> (grau, 16 MiB). Der Rest ist frei für Daten.</li>
+        <li>Rechts oben der C-Code von A, darunter dieselben Befehle als <b>Maschinenbefehle</b>. Der <b>PC</b> (Program Counter) zeigt auf den nächsten Befehl.</li></ul>` });
+  [0, 1, 2].forEach(i => {
+    const al = ALLOC[i];
+    add({ view: 'cpu', zoom: i + 1, pc: ASM.findIndex(x => x.call === i), src: i + 2, anim: { type: 'malloc', i }, phase: 'Programm A',
+      bubble: `call malloc → ${al.n} MiB. Passt in mein Stück ✓`,
+      t: i === 0 ? 'Die CPU liest „call malloc“: A braucht 92 MiB' : i === 1 ? 'Nächstes malloc: 40 MiB für Vorschaubilder' : 'Noch ein Foto: 92 MiB, das Stück ist fast voll',
+      h: i === 0
+        ? `<ul><li><code>mov edi, 96000000</code>: 96 000 000 Byte ≈ 92 MiB.</li>
+           <li>Dann kommt <code>call malloc</code>: A braucht 92 MiB.</li>
+           <li>A fragt dafür <b>nicht das OS</b>. Im eigenen Stück ist noch Platz, also schiebt <code>malloc</code> nur einen Zeiger weiter (oben in der Lupe).</li></ul>
+           <div class="box hl">Jedes Programm verwaltet seinen Speicher selbst. So braucht nicht jedes <code>malloc</code> einen Systemaufruf. Diese Idee heißt <b>Bump Allocator</b>.</div>`
+        : i === 1
+        ? `<ul><li><code>call malloc</code> mit 40 MiB. Wieder im eigenen Stück, wieder <b>ohne Systemaufruf</b>.</li><li>Das dauert nur ein paar Nanosekunden: Zeiger lesen, addieren, fertig.</li></ul>`
+        : `<ul><li>Zweites Foto, 92 MiB. Passt noch.</li><li>Jetzt sind 16 + 92 + 40 + 92 = <b>240 MiB</b> belegt. Nur noch <b>16 MiB</b> frei.</li></ul>` });
+  });
+  add({ view: 'cpu', zoom: 3, fail: true, pc: ASM.length - 1, src: 5, alert: true, anim: { type: 'fail' }, phase: 'Programm A',
+    bubble: 'call malloc → 92 MiB. Nur noch 16 MiB frei ✗', badBubble: true,
+    t: 'Das dritte Foto passt nicht mehr → Systemaufruf',
+    h: `<ul><li>Drittes Foto: <b>92 MiB</b>. Frei sind nur noch <b>16 MiB</b>. Jetzt <b>muss</b> A das Betriebssystem fragen: über einen <b>Systemaufruf</b>.</li></ul>
+        <div class="box warn"><b>Warum teuer?</b> Das Programm hält an, die CPU wechselt in den Kernel-Modus, das OS sucht Platz und springt zurück. Das kostet ein Vielfaches eines normalen <code>malloc</code>.</div>
+        <div class="box hl"><b>Darum fragt A gleich nach 256 MiB, nicht nur nach 92 MiB.</b> Dann passen die nächsten Fotos wieder ohne Systemaufruf. So machen es auch echte <code>malloc</code>-Bibliotheken: selten fragen, große Stücke.</div>` });
+  add({ view: 'os', zoom: null, fail: true, pc: ASM.length - 1, src: 5, gaps: 'cand', think: true, anim: { type: 'os' }, phase: 'Betriebssystem',
+    t: 'Das OS denkt nach: in welche Lücke kommen die 256 MiB?',
+    h: `<ul><li>In alle drei Lücken passen 256 MiB. Welche soll das OS nehmen?</li>
+        <li>Die Regel für diese Entscheidung heißt <b>Allokationsstrategie</b>.</li></ul>
+        <div class="box hl">Frage an euch: Welche Lücke würdet ihr nehmen, und warum?</div>` });
+
+  // ----- Teil 2 -----
+  const P2 = { zoom: null, fail: false, pc: -1, src: -1, gaps: '', think: false, view: 'os', badBubble: false };
+  const NOPLACE = '✗ Spiel (900 MiB): keine Lücke ist groß genug!';
+  const s2 = o => add(Object.assign({}, P2, o));
+
+  // First Fit
+  s2({ strat: 'ff', k: 1, face: 'happy', script: { intro: true, reqs: [0] }, anim: { type: 'strat' }, phase: 'First Fit',
+    t: 'First Fit: die erste Lücke, die passt',
+    h: `<ul><li>Das OS probiert jetzt die Strategien nacheinander aus, immer mit denselben vier Anfragen. So kann man fair vergleichen.</li>
+        <li><b>A₂</b> ist das zweite Stück von Programm A.</li></ul>` });
+  s2({ strat: 'ff', k: 4, face: 'happy', script: { reqs: [1, 2, 3] }, anim: { type: 'strat' }, phase: 'First Fit',
+    t: 'Weitere Programme: Zoom, Notizen und ein Spiel',
+    h: `<div class="box hl"><b>Ergebnis First Fit:</b> Alle vier Programme passen, mit nur <b>7 Vergleichen</b>. Schnell und einfach.</div>` });
+  s2({ strat: 'ff', k: 4, face: 'think', marks: 'crumbs', anim: { type: 'strat', keepMarks: true }, phase: 'First Fit',
+    script: { demo: { n: 100, intro: 'Gedankenexperiment: Ein Terminal will 100 MiB.',
+      after: ['→ L3. Vorher musste ich aber über <b>zwei Krümel</b> laufen, die nicht passen.', 'Mit jeder neuen Anfrage kommen vorne noch mehr Krümel dazu. Die Suche wird immer länger.'] } },
+    t: 'Nachteil von First Fit: Krümel am Anfang',
+    h: `<div class="box warn"><b>Nachteil:</b> Viele kleine Lücken (Krümel), vor allem am Anfang. Jede Suche läuft zuerst über sie.</div>` });
+
+  // Next Fit
+  s2({ strat: 'nf', k: 1, face: 'happy', script: { intro: true, reqs: [0] }, anim: { type: 'strat' }, phase: 'Next Fit',
+    t: 'Next Fit: weitersuchen, wo man aufgehört hat',
+    h: `<div class="box hl"><b>Idee:</b> nicht immer wieder über die Krümel am Anfang laufen.</div>` });
+  s2({ strat: 'nf', k: 4, face: 'sad', alert: true, alertText: NOPLACE, script: { reqs: [1, 2, 3] }, anim: { type: 'strat' }, phase: 'Next Fit',
+    t0: 'Next Fit: Zoom, Notizen und das Spiel', t: 'Next Fit: Das Spiel bekommt keinen Platz!',
+    h: `` });
+  s2({ strat: 'nf', k: 4, face: 'sad', marks: 'ghost', ghostLabel: 'Spiel hätte hier gepasst, ohne die Notizen', anim: { type: 'strat' }, phase: 'Next Fit',
+    script: { lines: ['Hmm, warum hat das Spiel nicht gepasst?', { t: 'ghost' }, 'Die Notizen habe ich in L3 gelegt, nur weil mein Zeiger gerade dort stand.',
+      'Damit hatte L3 nur noch 896 MiB. Genau 4 MiB zu wenig!', 'First Fit hätte die Notizen nach vorne in L1 gelegt. Dann wäre L3 groß geblieben.'] },
+    t: 'Nachteil von Next Fit: Auch die große Lücke wird angeknabbert',
+    h: `<div class="box warn"><b>Nachteil:</b> Wie First Fit, aber die Reste liegen über den <b>ganzen</b> Speicher verteilt.</div>
+        <div class="box hl"><b>Externe Fragmentierung:</b> Insgesamt ist genug frei (hier 1108 MiB), aber kein Stück ist groß genug (900 MiB).</div>` });
+
+  // Best Fit
+  s2({ strat: 'bf', k: 1, face: 'happy', script: { intro: true, reqs: [0] }, anim: { type: 'strat' }, phase: 'Best Fit',
+    t: 'Best Fit: die kleinste Lücke, die passt',
+    h: `` });
+  s2({ strat: 'bf', k: 4, face: 'happy', script: { reqs: [1, 2, 3] }, anim: { type: 'strat' }, phase: 'Best Fit',
+    t0: 'Best Fit: Zoom, Notizen und das Spiel', t: 'Best Fit: Alle passen, aber viele Vergleiche',
+    h: `<div class="box hl"><b>Vorteil:</b> Große Lücken bleiben frei für große Anfragen. Hier blieb L3 frei, bis das Spiel kam.</div>
+        <div class="box warn"><b>Aber:</b> 12 Vergleiche statt 7 bei First Fit.</div>` });
+  s2({ strat: 'bf', k: 4, view: 'race', anim: { type: 'race' }, phase: 'Best Fit',
+    t: 'Nachteil von Best Fit: Es ist langsam',
+    h: `<ul><li>Ein echter Rechner hat nach einiger Zeit <b>hunderte</b> Lücken. Rechts: 100 Lücken, ein Programm will 50 MiB.</li>
+        <li>First Fit hört bei der ersten passenden Lücke auf. Best Fit muss <b>bis zum Ende</b> suchen, sonst weiß es nicht, welche die kleinste ist.</li></ul>
+        <div class="box warn"><b>Nachteil:</b> Best Fit ist langsam. Worst Fit auch, aus demselben Grund.</div>` });
+  s2({ strat: 'bf', k: 4, face: 'think', marks: 'crumbs', anim: { type: 'strat', keepMarks: true }, phase: 'Best Fit',
+    script: { demo: { n: 92, intro: 'A will noch ein Foto laden: 92 MiB.',
+      after: ['→ Nur L3 passt. Die Reste mit 20 und 64 MiB sind zu klein.', 'Solche Krümel kann ich fast nie mehr vergeben. Prüfen muss ich sie trotzdem jedes Mal.'] } },
+    t: 'Zweiter Nachteil von Best Fit: winzige Reste',
+    h: `<ul><li>Best Fit lässt immer den <b>kleinstmöglichen</b> Rest übrig. Bei A₂ waren es 64 MiB, bei First Fit 192 MiB.</li></ul>
+        <div class="box warn"><b>Nachteil:</b> Viele winzige Lücken, die man kaum noch vergeben kann (externe Fragmentierung).</div>` });
+
+  // Worst Fit
+  s2({ strat: 'wf', k: 1, face: 'happy', script: { intro: true, reqs: [0] }, anim: { type: 'strat' }, phase: 'Worst Fit',
+    t: 'Worst Fit: immer die größte Lücke',
+    h: `` });
+  s2({ strat: 'wf', k: 4, face: 'sad', alert: true, alertText: NOPLACE, script: { reqs: [1, 2, 3] }, anim: { type: 'strat' }, phase: 'Worst Fit',
+    t0: 'Worst Fit: Zoom, Notizen und das Spiel', t: 'Worst Fit: Das Spiel bekommt keinen Platz!',
+    h: `` });
+  s2({ strat: 'wf', k: 4, face: 'sad', marks: 'ghost', ghostLabel: 'Spiel hätte am Anfang hier gepasst ✓', anim: { type: 'strat' }, phase: 'Worst Fit',
+    script: { lines: ['Moment … am Anfang war L3 doch 1 GiB groß!', { t: 'ghost' }, 'Da hätte das Spiel locker hineingepasst.',
+      'Aber ich habe jedes Mal die größte Lücke genommen: A₂, Zoom, Notizen. Alles in L3.', 'Jetzt ist keine große Lücke mehr übrig.'] },
+    t: 'Nachteil von Worst Fit: Die große Lücke ist weg',
+    h: `<div class="box warn"><b>Nachteil:</b> Sehr große Anfragen können schon früh scheitern. Außerdem langsam, weil das OS alle Lücken prüfen muss.</div>` });
+
+  // Vergleich
+  const cmpRows = ['ff', 'nf', 'bf', 'wf'].map(s => { const r = sim(s, 4), ok = r.logs[3].pick >= 0;
+    return `<tr><td>${STRAT[s].name}</td><td class="mono">${r.cmp}</td><td>${ok ? '<span class="okc">✓ passt</span>' : '<span class="badc">✗ kein Platz</span>'}</td><td class="mono">${r.holes.map(h => h.n).join(' · ')}</td></tr>`; }).join('');
+  s2({ strat: null, k: 0, view: 'cmp', gaps: 'show', phase: 'Vergleich',
+    t: 'Vergleich: dieselben vier Anfragen, vier Strategien',
+    h: `<div class="box hl"><b>Keine Strategie ist immer die beste.</b> First Fit ist schnell, Best Fit hält große Lücken frei. Next Fit und Worst Fit haben hier verloren. Mit anderen Anfragen kann das anders ausgehen.</div>
+        <ul><li>In <b>Aufgabe 3</b> spielt ihr das selbst mit kleinen Zahlen durch.</li><li>Vorher noch eine ganz andere Idee: das <b>Buddy-System</b>.</li></ul>` });
+
+  // ----- Teil 3: Buddy-System -----
+  // Eigener kleiner Speicher mit 64 MiB, Zahlen wie auf der KGÜ-Folie (64 → 32 → 16 → 8). Kleinster Block: 4 MiB.
+  // Ein Zustand ist eine sortierte Liste von Blättern: [Start, Größe, Programm oder null, gewünschte Größe].
+  const BN = 64, BSZ = [64, 32, 16, 8, 4];
+  const bp = m => (m / BN * 100) + '%';
+  const BP = {
+    term: { name: 'Terminal', ab: 'T', col: 'var(--app-a)' }, ed: { name: 'Editor', ab: 'E', col: 'var(--app-zoom)' },
+    uhr: { name: 'Uhr', ab: 'U', col: 'var(--app-notiz)' }, vid: { name: 'Videoschnitt', ab: 'V', col: 'var(--app-code)' },
+    chat: { name: 'Chat', ab: 'C', col: 'var(--app-discord)' }, mail: { name: 'Mail', ab: 'M', col: 'var(--app-mail)' },
+    spiel: { name: 'Spiel', ab: 'S', col: 'var(--app-spiel)' }
+  };
+  const BRULE = 'Nur Blöcke der Größe <b>2<sup>k</sup></b>. Zu groß? <b>Halbieren.</b> Buddy frei? <b>Zusammenfügen.</b>';
+  const bSplit = (m, s) => m.flatMap(b => b[0] === s && !b[2] ? [[s, b[1] / 2, null], [s + b[1] / 2, b[1] / 2, null]] : [b]);
+  const bAlloc = (m, s, id, req) => m.map(b => b[0] === s ? [s, b[1], id, req] : b);
+  const bFree = (m, s) => m.map(b => b[0] === s ? [s, b[1], null] : b);
+  // Buddy-Adresse = Start XOR Größe. Beide Hälften werden durch einen Block doppelter Größe ersetzt.
+  const bMerge = (m, s) => { const n = m.find(b => b[0] === s)[1], lo = Math.min(s, s ^ n);
+    return m.filter(b => b[0] !== lo && b[0] !== lo + n).concat([[lo, 2 * n, null]]).sort((x, y) => x[0] - y[0]); };
+  const M0 = [[0, 64, null]], M1 = bSplit(M0, 0), M2 = bSplit(M1, 0), M3 = bSplit(M2, 0), M4 = bAlloc(M3, 0, 'term', 8);
+  const M5 = bAlloc(M4, 16, 'ed', 9), M6 = bSplit(M5, 8), M7 = bAlloc(M6, 8, 'uhr', 3);
+  const M8 = bFree(M7, 16), M9 = bFree(M8, 0), M10 = bFree(M9, 8);
+  const M11 = bMerge(M10, 8), M12 = bMerge(M11, 8), M13 = bMerge(M12, 0), M14 = bMerge(M13, 0);
+  const MV = bAlloc(M0, 0, 'vid', 33);
+  const MX = [[0, 8, 'chat', 8], [8, 8, null], [16, 8, null], [24, 8, 'mail', 8], [32, 32, 'spiel', 32]];
+  const L = (sz, ok) => ({ at: 'L' + sz, ls: { sz, ok } });
+  const sb = o => add(Object.assign({}, P2, { strat: null, k: 0, view: 'os', gaps: '', phase: 'Buddy' }, o));
+
+  sb({ t: 'Buddy-System: halbieren, bis es passt', t0: 'Buddy-System: Das Terminal will 8 MiB',
+    bud: { mem0: M0, beats: [
+      { say: ['Neue Idee: Ich erlaube nur noch Blockgrößen <b>2<sup>k</sup></b>: 4, 8, 16, 32 oder 64 MiB.',
+        'Mein Speicher ist am Anfang <b>ein</b> freier Block mit 64 MiB.',
+        'Für jede Größe merke ich mir die freien Blöcke in einer Liste.'] },
+      { go: '▶ Anfrage: Terminal', say: [['Terminal will 8 MiB.', 'req'], 'Erst aufrunden auf eine Zweierpotenz: 8 ist schon eine.',
+        'Gibt es einen freien 8er-Block? Ich sehe in den Listen nach.'] },
+      { go: '▶ In den Listen nachsehen', keep: 1, frames: [L(8, false), L(16, false), L(32, false), L(64, true)],
+        say: ['Liste 8: leer. 16: leer. 32: leer.', 'Erst bei 64 liegt ein Block. Der ist zu groß, also <b>halbiere</b> ich ihn.'] },
+      { go: '▶ 64 halbieren', keep: 1, frames: [{ at: [0, 64], mem: M1 }],
+        say: ['Zwei Hälften mit je 32 MiB. Die beiden sind <b>Buddys</b> (Kumpel).', '32 ist immer noch zu groß. Ich halbiere die linke Hälfte.'] },
+      { go: '▶ 32 halbieren', keep: 1, frames: [{ at: [0, 32], mem: M2 }],
+        say: ['Jetzt zwei Buddys mit je 16 MiB.', 'Immer noch zu groß. Noch einmal halbieren!'] },
+      { go: '▶ 16 halbieren', keep: 1, frames: [{ at: [0, 16], mem: M3 }], say: ['Zwei Buddys mit je 8 MiB. Das passt genau!'] },
+      { go: '▶ Terminal ablegen', keep: 1, face: 'happy', frames: [{ at: [0, 8], mem: M4 }],
+        say: [['Terminal liegt im linken 8er-Block. ✓', 'good'], 'Frei bleiben 8, 16 und 32 MiB.'] }
+    ] },
+    h: `<b>Die Regel in drei Schritten:</b><ol><li>Anfrage auf eine Zweierpotenz <b>aufrunden</b>.</li><li>In der Liste dieser Größe nach einem freien Block sehen.</li><li>Keiner da? Eine Ebene höher suchen und den Block <b>halbieren</b>.</li></ol>` });
+
+  sb({ t: 'Buddy-System: Suchen geht schnell', t0: 'Buddy-System: Editor und Uhr kommen dazu',
+    bud: { mem0: M4, beats: [
+      { say: [['Editor will 9 MiB.', 'req'], 'Aufrunden: 9 → <b>16</b>. Das ist die nächste Zweierpotenz.', 'Gibt es einen freien 16er-Block?'] },
+      { go: '▶ In Liste 16 nachsehen', keep: 1, frames: [L(16, true)], say: ['Liste 16: Ein Block liegt bereit!', 'Ein Blick genügt. Kein Suchen, kein Teilen.'] },
+      { go: '▶ Editor ablegen', keep: 1, frames: [{ at: [16, 16], mem: M5 }],
+        say: [['Editor liegt im 16er-Block. ✓', 'good'], 'Er braucht aber nur 9. <b>7 MiB</b> im Block bleiben ungenutzt.'] },
+      { go: '▶ Anfrage: Uhr', say: [['Uhr will 3 MiB.', 'req'], 'Aufrunden: 3 → <b>4</b>.', 'Gibt es einen freien 4er-Block?'] },
+      { go: '▶ In den Listen nachsehen', keep: 1, frames: [L(4, false), L(8, true)], say: ['Liste 4: leer. Liste 8: ein Block!', 'Der ist zu groß, also halbiere ich ihn.'] },
+      { go: '▶ 8 halbieren', keep: 1, frames: [{ at: [8, 8], mem: M6 }], say: ['Zwei Buddys mit je 4 MiB. Passt!'] },
+      { go: '▶ Uhr ablegen', keep: 1, face: 'happy', frames: [{ at: [8, 4], mem: M7 }],
+        say: [['Uhr liegt im 4er-Block. ✓', 'good'], 'Drei Anfragen, und ich musste nie alle Lücken ablaufen.'] }
+    ] },
+    h: `<ul><li><b>Vorteil: schnell.</b> Das OS schaut nur in ein paar Listen, nie alle Lücken an. Es gibt höchstens so viele Listen wie Blockgrößen.</li></ul>` });
+
+  sb({ t: 'Freigeben: Nur der Buddy wird geprüft', t0: 'Freigeben: Der Editor ist fertig',
+    bud: { mem0: M7, beats: [
+      { say: ['Der Editor ist fertig und gibt seinen Block zurück.', 'Meine Regel beim Freigeben: Ist der <b>Buddy</b> auch frei?',
+        'Wenn ja, füge ich beide wieder zu einem großen Block zusammen.'] },
+      { go: '▶ Editor freigeben', frames: [{ at: [16, 16], mem: M8, hl: [{ s: 0, n: 16, c: 'no', txt: 'Buddy: noch belegt ✗' }] }],
+        say: ['Der 16er-Block ist wieder frei.', 'Sein Buddy ist die linke Hälfte, 0 bis 16. Dort liegen Terminal und Uhr.', 'Nicht frei, also füge ich nichts zusammen.'] },
+      { go: '▶ Terminal freigeben', frames: [{ at: [0, 8], mem: M9, hl: [{ s: 8, n: 8, c: 'no', txt: 'Buddy: geteilt ✗' }] }],
+        say: ['Auch das Terminal ist fertig. Sein 8er-Block ist frei.', 'Sein Buddy ist 8 bis 16. Der ist geteilt, die Uhr liegt darin.',
+          'Wieder nichts. Aber ich musste nur <b>einen</b> Block prüfen!'] }
+    ] },
+    h: `<ul><li><b>Vorteil: einfach.</b> Jeder Block hat genau einen Buddy. Seine Adresse kann man ausrechnen: Block bei 8 mit Größe 4 → Buddy bei 12 (8 XOR 4).</li>
+        <li>Der Buddy muss <b>als Ganzes</b> frei sein. Ist er geteilt, wird nichts zusammengefügt.</li></ul>` });
+
+  sb({ t: 'Freigeben: Buddys verschmelzen rekursiv', t0: 'Freigeben: Jetzt ist die Uhr fertig',
+    bud: { mem0: M9, beats: [
+      { say: ['Jetzt ist auch die Uhr fertig.', 'Ihr Buddy ist der 4er-Block direkt rechts daneben.', 'Ist der frei?'] },
+      { go: '▶ Uhr freigeben', frames: [{ at: [8, 4], mem: M10, hl: [{ s: 12, n: 4, c: 'ok', txt: 'Buddy frei ✓' }] }],
+        say: ['Der Buddy ist frei!', 'Also füge ich beide zusammen: 4 + 4 = 8.'] },
+      { go: '▶ Zusammenfügen', frames: [{ at: [8, 8], mem: M11, hl: [{ s: 0, n: 8, c: 'ok', txt: 'Buddy frei ✓' }] }],
+        say: ['Aus 4 + 4 wird ein 8er-Block.', 'Jetzt dieselbe Frage noch einmal: Ist <b>sein</b> Buddy frei?', 'Ja! Links liegt der freie 8er vom Terminal.'] },
+      { go: '▶ Rekursiv weiter', face: 'happy', frames: [
+          { at: [0, 16], mem: M12, hl: [{ s: 16, n: 16, c: 'ok', txt: 'Buddy frei ✓' }], hold: 1000 },
+          { at: [0, 32], mem: M13, hl: [{ s: 32, n: 32, c: 'ok', txt: 'Buddy frei ✓' }], hold: 1000 },
+          { at: [0, 64], mem: M14, hold: 700 }],
+        say: ['8 + 8 → 16, dann 16 + 16 → 32, dann 32 + 32 → 64.', ['Der ganze Speicher ist wieder <b>ein</b> Block. Keine Krümel! ✓', 'good']] }
+    ] },
+    h: `<ul><li><b>Vorteil: Der Speicher heilt sich selbst.</b> Aus kleinen Blöcken werden von allein wieder große, Ebene für Ebene (rekursiv).</li>
+        <li>First Fit und Best Fit können Nachbarlücken auch zusammenfügen. Dort muss das OS die Nachbarn aber erst suchen.</li></ul>` });
+
+  sb({ t: 'Nachteil 1: Verschnitt im Block', t0: 'Gedankenexperiment: Ein Programm will 33 MiB',
+    bud: { mem0: M0, beats: [
+      { say: ['Jetzt die Nachteile. Der Speicher ist wieder leer.', ['Ein Videoschnitt-Programm will 33 MiB.', 'req'],
+        'Aufrunden: 33 → <b>64</b>. Der 32er-Block wäre 1 MiB zu klein!'] },
+      { go: '▶ Videoschnitt ablegen', face: 'sad', frames: [L(64, true), { at: [0, 64], mem: MV }],
+        say: [['31 MiB im Block bleiben ungenutzt. Fast die Hälfte!', 'bad'], 'Kein anderes Programm kann sie bekommen, sie gehören zum Block.',
+          'Mein Speicher ist jetzt voll, obwohl 31 MiB leer sind.'] }
+    ] },
+    h: `<ul><li><b>Interne Fragmentierung:</b> ungenutzter Platz <b>innerhalb</b> eines Blocks. Sie entsteht durch das Aufrunden.</li>
+        <li>Schlimmster Fall: knapp über einer Zweierpotenz (33, 65, 129 …). Dann ist fast die Hälfte verschenkt.</li>
+        <li>First Fit und Best Fit schneiden genau ab. Dort gibt es nur Lücken <b>zwischen</b> den Blöcken (externe Fragmentierung).</li></ul>` });
+
+  sb({ t: 'Nachteil 2: Nur echte Buddys verschmelzen', t0: 'Gedankenexperiment: zwei freie Nachbarn',
+    bud: { mem0: MX, beats: [
+      { say: ['Anderer Tag: Vier kleine Programme hatten je 8 MiB. Die zwei in der Mitte sind fertig.', ['Der Editor will 16 MiB.', 'req'],
+        'Frei sind 8 + 8 = 16 MiB. Das müsste doch passen?'] },
+      { go: '▶ In den Listen nachsehen', keep: 2, face: 'sad',
+        frames: [L(16, false), L(32, false), L(64, false), { at: [8, 16], hl: [{ s: 8, n: 16, c: 'no', txt: 'frei, aber keine Buddys ✗' }], hold: 800 }],
+        say: [['Keine Liste hat einen 16er-Block!', 'bad'], 'Die zwei freien 8er liegen nebeneinander, sind aber <b>keine Buddys</b>.',
+          'Sie stammen aus verschiedenen 16er-Blöcken. Ich darf sie nicht zusammenfügen.'] }
+    ] },
+    h: `<ul><li>Buddys sind nur die zwei Hälften <b>desselben</b> Blocks. Im Baum: zwei Kinder desselben Knotens.</li>
+        <li>Also hat auch das Buddy-System <b>externe Fragmentierung</b>: genug frei, aber kein Block passt.</li></ul>` });
+
+  sb({ t: 'Fazit: Ist das Buddy-System besser?', noTree: true,
+    bud: { mem0: M7, beats: [
+      { say: ['Ist Buddy besser als First Fit und Best Fit? <b>Kommt darauf an!</b>', ['Schnell beim Suchen und beim Zusammenfügen. ✓', 'good'],
+        ['Verschenkt Platz durch das Aufrunden. ✗', 'bad'], 'Übrigens: Der Linux-Kern verwaltet seine Speicherseiten mit einem Buddy-System.'] }
+    ] },
+    h: `<table class="cmpt"><thead><tr><th></th><th>First / Best Fit</th><th>Buddy-System</th></tr></thead><tbody>
+        <tr><td><b>Platz suchen</b></td><td>Lücken der Reihe nach ansehen</td><td class="okc">in die Liste der Größe schauen</td></tr>
+        <tr><td><b>Freigeben</b></td><td>Nachbarlücken suchen</td><td class="okc">nur den einen Buddy prüfen</td></tr>
+        <tr><td><b>Verschnitt</b></td><td class="okc">Block passt genau, Lücken außen</td><td class="badc">aufgerundet, Verschnitt innen</td></tr>
+        <tr><td><b>Blockgrößen</b></td><td class="okc">beliebig</td><td class="badc">nur 2<sup>k</sup></td></tr></tbody></table>
+        <div class="box hl"><b>Buddy ist nicht „besser“, sondern ein anderer Tausch:</b> Tempo und Ordnung gegen Platz.</div>` });
+
+  // ----- Schluss: Modell und Wirklichkeit -----
+  BP.pa = { name: 'Programm A', ab: 'A', col: 'var(--app-a)', pg: 1 };
+  BP.pb = { name: 'Programm B', ab: 'B', col: 'var(--app-zoom)', pg: 1 };
+  BP.pc = { name: 'C', ab: 'C', col: 'var(--app-notiz)', pg: 1 };
+  const MC = [[0, 16, 'pa', 16], [16, 16, 'pb', 16], [32, 8, 'pc', 8], [40, 8, null], [48, 16, null]];
+  const MP = 'ab.cba..bac.a.b.'.split('').map((ch, i) => [i * 4, 4, ch === '.' ? null : 'p' + ch, 4]);
+  sb({ phase: 'In echt', t: 'Und in echt? Modell und Wirklichkeit', t0: 'Zum Schluss: Wie ist das in echt?',
+    bud: { mem0: MC, beats: [
+      { say: ['Zum Schluss: <b>Wie ist das in echt?</b>', 'Bis jetzt bekam jedes Programm <b>ein</b> zusammenhängendes Stück RAM, so wie hier A, B und C. Das ist das Modell aus dem Skript. Ein echtes Betriebssystem macht es anders.'] },
+      { go: '▶ So macht es ein echtes OS', frames: [{ at: [0, 40], mem: MP, hold: 900 }],
+        say: ['Ich (das Betriebssystem) teile den RAM in <b>Seiten</b> (englisch: pages). Eine Seite hat 4 KiB, hier ist jedes Kästchen eine Seite. Ich vergebe nur ganze Seiten.',
+          'Die Seiten eines Programms liegen <b>verstreut</b>: A, B, frei, C, wieder B, wieder A …'] },
+      { go: '▶ Was sieht Programm A?', face: 'happy',
+        say: ['Programm A merkt davon <b>nichts</b>. Es sieht seinen Speicher so:',
+          '<span class="vrow"><span class="vpg">A</span><span class="vpg">A</span><span class="vpg">A</span><span class="vpg">A</span></span> ein Stück, mit eigenen Adressen ab 0.',
+          'Diese Sicht heißt <b>virtueller Speicher</b>. Wie das genau funktioniert, kommt später ausführlich.'] },
+      { go: '▶ Warum ist das wichtig?',
+        say: ['So arbeitet <b>jeder</b> heutige Rechner: Laptop, Handy, Server. Das Thema heißt <b>Paging</b>. Es kommt in ein paar Wochen in der Vorlesung und danach genauer in den KGÜs.',
+          ['Merkt es euch: Das ist eines der wichtigsten Themen für die Klausur!', 'req']] },
+      { go: '▶ Wer benutzt dann First Fit?',
+        say: ['First Fit und Best Fit gibt es trotzdem: in <b>malloc</b>, im Speicher des Programms (Heap). Dort sind die Blöcke verschieden groß. Also muss malloc eine Lücke aussuchen.',
+          'Ich (das Betriebssystem) verteile die Seiten des RAM mit dem <b>Buddy-System</b>.'] },
+      { go: '▶ Ist Best Fit wirklich langsam?',
+        say: ['Langsam ist Best Fit nur mit einer <b>unsortierten</b> Liste. Echte Allokatoren sortieren die Lücken nach Größe, zum Beispiel in Fächer: 16 Byte, 32 Byte, 48 Byte …',
+          ['Dann ist die kleinste passende Lücke sofort gefunden. ✓', 'good']] }
+    ] },
+    h: `<ul><li><b>Modell:</b> ein zusammenhängendes Stück pro Programm. <b>In echt:</b> einzelne Seiten (4 KiB), die verstreut im RAM liegen. Jedes Programm sieht trotzdem ein Stück mit eigenen Adressen ab 0: <b>virtueller Speicher</b>.</li>
+        <li><b>Paging</b> benutzt heute jeder Rechner. Es kommt in ein paar Wochen in der Vorlesung und danach in den KGÜs, und es ist ein wichtiges Klausurthema.</li>
+        <li><b>First Fit / Best Fit:</b> benutzt vor allem <code>malloc</code> im Heap des Programms. <b>Buddy:</b> benutzt der Linux-Kern für die Seiten des RAM.</li>
+        <li><b>„Best Fit ist langsam“</b> gilt nur für eine unsortierte Liste. Echte Allokatoren sortieren die Lücken nach Größe.</li></ul>
+      <div class="hint">Für die Klausur zählt das Modell von den Folien. Aber jetzt wisst ihr, wo die Ideen in echten Systemen stecken.</div>` });
+
+  // ---------- DOM ----------
+  const $ = id => document.getElementById(id);
+  const bar = $('bar'), axis = $('axis'), parts = $('parts'), ex = $('explain'), stage = $('stage'), box = $('box');
+  const wins = $('wins'), dock = $('dock'), cursor = $('cursor'), ripple = $('ripple'), screen = $('vScreen');
+  const zoom = $('zoom'), lensw = $('lensw'), mglass = $('mglass'), zbar = $('zbar'), zaxis = $('zaxis'), chips = $('chips');
+  let K = 1; // Skalierung der Bühne (fit). Bildschirm-Pixel ÷ K = Pixel auf der Bühne.
+  const asm = $('asm'), csrc = $('csrc'), pcarrow = $('pcarrow'), cbubble = $('cbubble');
+  const vS = $('vScreen'), vC = $('vCpu'), vO = $('vOs'), alertEl = $('alert'), letter = $('letter'), thought = $('thought');
+  const vR = $('vRace'), vM = $('vCmp'), queue = $('queue'), qrows = $('qrows'), qcnt = $('qcnt'), ruleEl = $('rule'), talk = $('talk');
+  const osfig = $('osfig'), runner = $('runner'), nfptr = $('nfptr'), figs = [osfig, runner];
+  const bbox = $('bbox'), btree = $('btree'), blists = $('blists');
+  runner.innerHTML = osfig.querySelector('svg').outerHTML + '<span class="mag"><svg viewBox="0 0 28 28" aria-hidden="true"><circle cx="11" cy="11" r="8" fill="rgba(255,255,255,0.75)" stroke="#16181d" stroke-width="3"/><path d="M17 17l8 8" stroke="#16181d" stroke-width="4.5" stroke-linecap="round"/></svg></span>' + osfig.querySelector('.hg').outerHTML;
+  runner.querySelector('svg').removeAttribute('aria-label');
+  const ALERT0 = alertEl.textContent;
+  const MOUTH = { normal: 'M84 134 Q100 144 116 134', think: 'M88 138 Q100 136 112 138', happy: 'M80 130 Q100 152 120 130', sad: 'M84 143 Q100 130 116 143' };
+  // Gedankenexperiment: 100 Lücken, Anfrage 50 MiB
+  const RQ = 50;
+  const RACE = (() => { let x = 12345; const a = [];
+    for (let i = 0; i < 100; i++) { x = (x * 1103515245 + 12345) % 2147483648; a.push(8 + ((x >>> 8) % 110)); }
+    for (let i = 0; i < 6; i++) a[i] = Math.min(a[i], 12 + i * 6);
+    a[6] = 88;
+    for (let i = 7; i < 100; i++) if (a[i] >= RQ && a[i] < 56) a[i] = 61;
+    a[83] = 51; return a; })();
+  const RFF = RACE.findIndex(n => n >= RQ), RBF = RACE.reduce((b, n, i) => n >= RQ && (b < 0 || n < RACE[b]) ? i : b, -1);
+  ['FF', 'BF'].forEach(k => RACE.forEach(n => { const c = document.createElement('div'); c.className = 'rc' + (n >= RQ ? ' fit' : ''); c.textContent = n; $('rg' + k).appendChild(c); }));
+  let cur = 0, timers = [], lastRam = new Set();
+  let beat = 0, busy = false, beats = [{ kind: 'plain' }], prepOnly = false, holdLens = false;
+  const seen = new Set([0]);
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  // Tempo der Suche: Standard 2× (schnell). Beim Buddy-System bleibt es immer 1×, dort ist es schwerer.
+  let SPEED = 2;
+  try { const v = parseFloat(localStorage.getItem('kgue4-tempo')); if (v >= 1 && v <= 3) SPEED = v; } catch (e) {}
+  const spd = () => (S[cur] && S[cur].bud ? 1 : SPEED);
+  const laterS = (ms, fn) => later(ms / spd(), fn);
+  const clearT = () => { timers.forEach(clearTimeout); timers = []; };
+
+  for (let g = 0; g <= 8; g++) {
+    const s = document.createElement('span'); s.style.left = pct(g * 512);
+    s.textContent = g % 2 ? (g / 2).toString().replace('.', ',') : (g / 2) + ' GiB';
+    if (g % 2) s.className = 'odd'; axis.appendChild(s);
+  }
+  for (let m = 0; m <= 256; m += 64) { const s = document.createElement('span'); s.style.left = (m / 256 * 100) + '%'; s.textContent = m; zaxis.appendChild(s); }
+  ORDER.forEach(k => {
+    const ap = APPS[k], d = document.createElement('div'); d.className = 'icon'; d.id = 'ic-' + k;
+    d.innerHTML = `<div class="sq" style="background:${ap.col}">${ap.letter}</div><span>${ap.short ? 'A' : ap.name}</span><div class="run"></div>`;
+    dock.appendChild(d);
+  });
+  ASM.forEach((l, i) => {
+    const d = document.createElement('div'); d.className = 'ln' + (l.cm ? ' cm' : '') + (l.call !== undefined ? ' call' : ''); d.id = 'ln' + i;
+    d.innerHTML = l.cm ? l.t : `<span class="ad">0x${l.a}</span><span>${l.t}</span>`;
+    asm.appendChild(d);
+  });
+  // Ein Knopf pro Teil (wie KGÜ 5). Ein Klick springt an den Anfang des Teils.
+  const PART = { 'Bildschirm': 'Start', 'Programm A': 'A', 'Betriebssystem': 'OS', 'First Fit': 'First', 'Next Fit': 'Next', 'Best Fit': 'Best', 'Worst Fit': 'Worst', 'Vergleich': 'Vergleich', 'Buddy': 'Buddy', 'In echt': 'In echt' };
+  const PH = [...new Set(S.map(x => x.phase))];
+  PH.forEach(ph => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'part';
+    const i0 = S.findIndex(x => x.phase === ph);
+    b.textContent = PART[ph] || ph; b.title = ph + ' (ab Schritt ' + (i0 + 1) + ')';
+    b.onclick = () => show(i0, 0, false); parts.appendChild(b);
+  });
+
+  // ---------- Zeichnen ----------
+  function ramBlocks(open) { return [['OS', 0, 1024, null], ...open.map(k => [k, APPS[k].start, APPS[k].size, APPS[k]])]; }
+  function drawRam(st, animNew, kOv) {
+    bar.innerHTML = ''; stage.querySelectorAll('.mem .gtag').forEach(t => t.remove());
+    const sm = st.strat ? sim(st.strat, kOv === undefined ? st.k : kOv) : null;
+    const blocks = ramBlocks(st.open);
+    if (sm) sm.placed.forEach(p => blocks.push(['p-' + p.id, p.s, p.n, p]));
+    const now = new Set(blocks.map(b => b[0]));
+    blocks.forEach(([id, s, n, ap]) => {
+      const d = document.createElement('div'); d.className = 'blk' + (id === 'OS' ? ' os' : '') + (n < 200 ? ' tiny' : ''); d.id = 'rb-' + id;
+      d.style.left = pct(s); d.style.width = pct(n);
+      if (ap) d.style.background = ap.col;
+      d.innerHTML = id === 'OS' ? 'Betriebs&shy;system<small>1 GiB</small>' : `${ap.short || ap.name}<small>${fmt(n)}</small>`;
+      if (id === 'a' && st.zoom !== null) d.classList.add('focus');
+      if (st.marks === 'ghost' && st.strat === 'nf' && id === 'p-notiz') d.classList.add('hot');
+      if (animNew && !lastRam.has(id)) { d.classList.add('in'); later(30, () => d.classList.remove('in')); }
+      bar.appendChild(d);
+    });
+    lastRam = now;
+    if (sm) {
+      sm.holes.forEach((h, i) => {
+        if (h.n <= 0) return;
+        const crumb = st.marks === 'crumbs' && h.n < 100;
+        const m = document.createElement('div'); m.className = 'gap cand' + (crumb ? ' crumb' : ''); m.id = 'g' + i;
+        m.style.left = pct(h.s); m.style.width = pct(h.n); bar.appendChild(m);
+        const t = document.createElement('div'); t.className = 'gtag cand' + (crumb ? ' crumb' : ''); t.id = 'gt' + i;
+        t.style.left = pct(h.s + h.n / 2); t.textContent = `${h.name}: ${fmt(h.n)}${crumb ? ' · Krümel' : ''}`;
+        bar.parentElement.appendChild(t);
+      });
+      if (st.marks === 'ghost') {
+        const g = document.createElement('div'); g.className = 'ghost'; g.style.left = pct(GAPS[2].s); g.style.width = pct(GAPS[2].n); bar.appendChild(g);
+        const gg = document.createElement('div'); gg.className = 'ghostgame'; gg.style.left = pct(GAPS[2].s); gg.style.width = pct(REQ[3].n);
+        gg.innerHTML = `<span>${st.ghostLabel || ''}</span>`; bar.appendChild(gg);
+      }
+      return;
+    }
+    if (st.gaps) GAPS.forEach(g => {
+      const m = document.createElement('div'); m.className = 'gap' + (st.gaps === 'cand' ? ' cand' : '');
+      m.style.left = pct(g.s); m.style.width = pct(g.n); bar.appendChild(m);
+      const t = document.createElement('div'); t.className = 'gtag' + (st.gaps === 'cand' ? ' cand' : '');
+      t.style.left = pct(g.s + g.n / 2); t.textContent = `${g.name}: ${g.n >= 1024 ? '1 GiB' : g.n + ' MiB'}`;
+      bar.parentElement.appendChild(t);
+    });
+  }
+  function drawScreen(st) {
+    wins.innerHTML = '';
+    st.open.forEach(k => wins.appendChild(makeWin(k)));
+    ORDER.forEach(k => $('ic-' + k).querySelector('.run').classList.toggle('on', st.open.includes(k)));
+  }
+  function makeWin(k) {
+    const ap = APPS[k], w = document.createElement('div'); w.className = 'win'; w.id = 'w-' + k;
+    w.style.left = ap.win[0] + '%'; w.style.top = (ap.win[1] + 6) + '%';
+    w.innerHTML = `<div class="wbar"><i></i><i></i><i></i><span>${ap.short ? 'Programm A: Bildbetrachter' : ap.name}</span></div><div class="wbody"><span class="ram" style="background:${ap.col}">${ap.size >= 1024 ? '1 GiB' : ap.size + ' MiB'}</span></div>`;
+    return w;
+  }
+  function drawZoom(st) {
+    if (!holdLens) lensw.classList.toggle('on', st.zoom !== null);
+    if (st.zoom === null) return;
+    zbar.innerHTML = ''; zbar.classList.toggle('full', st.fail);
+    const code = document.createElement('div'); code.className = 'zseg code'; code.style.left = '0'; code.style.width = (CODE_MIB / 256 * 100) + '%'; code.textContent = 'Code';
+    zbar.appendChild(code);
+    let pos = CODE_MIB;
+    for (let i = 0; i < st.zoom; i++) {
+      const a = ALLOC[i], d = document.createElement('div'); d.className = 'zseg heap'; d.id = 'za' + i;
+      d.style.left = (pos / 256 * 100) + '%'; d.style.width = (a.n / 256 * 100) + '%';
+      d.innerHTML = `${a.name}<br>${a.n} MiB`; zbar.appendChild(d); pos += a.n;
+    }
+    const b = document.createElement('div'); b.className = 'bump'; b.id = 'bump'; b.style.left = (pos / 256 * 100) + '%';
+    b.textContent = 'Zeiger'; zbar.appendChild(b);
+    chips.innerHTML = ALLOC.slice(0, st.zoom).map(a => `<span class="chip">malloc(${a.n} MiB) ✓</span>`).join('') +
+      (st.fail ? '<span class="chip bad">malloc(92 MiB) ✗ → OS fragen</span>' : '');
+  }
+  function setSrc(i) {
+    if (csrc.dataset.src === String(i)) return;
+    csrc.dataset.src = i; csrc.innerHTML = SRC.map((l, k) => k === i ? `<span class="now">${l}</span>` : l).join('\n');
+  }
+  function drawCpu(st) {
+    setSrc(st.src);
+    ASM.forEach((_, i) => $('ln' + i).classList.toggle('pc', i === st.pc));
+    placePc(st.pc);
+    cbubble.textContent = st.bubble; cbubble.classList.toggle('off', !st.bubble); cbubble.classList.toggle('bad', !!st.badBubble);
+  }
+  function placePc(i) {
+    const ln = $('ln' + Math.max(0, i)), bar = $('pcbar');
+    if (ln) { pcarrow.style.top = ln.offsetTop + 'px'; Object.assign(bar.style, { top: ln.offsetTop + 'px', left: ln.offsetLeft + 'px', width: ln.offsetWidth + 'px', height: ln.offsetHeight + 'px' }); }
+    pcarrow.style.opacity = bar.style.opacity = i < 0 ? 0 : 1;
+  }
+  // Der PC geht Befehl für Befehl weiter (Kommentarzeilen überspringt er), etwa eine halbe Sekunde pro Befehl.
+  // Gibt zurück, wann er beim Ziel ankommt.
+  function walkPc(from, to, t0) {
+    const path = []; for (let k = Math.max(0, from) + 1; k <= to; k++) if (!ASM[k].cm) path.push(k);
+    path.forEach((k, n) => later(t0 + n * 520, () => { placePc(k); setSrc(Math.floor(k / 4) + 2); }));
+    return t0 + Math.max(0, path.length - 1) * 520;
+  }
+  function setFace(f) {
+    figs.forEach(x => { ['think', 'happy', 'sad'].forEach(c => x.classList.toggle(c, f === c));
+      x.querySelector('.mouth').setAttribute('d', MOUTH[f] || MOUTH.normal); });
+  }
+
+  // Jeder Schritt von Teil 2 besteht aus Etappen: erst denkt das OS (Text), dann auf Klick die Animation.
+  // Jede Etappe hat ein Zielbild f: { k, cnt, run, tags, ghost, alert, face, lines, ptr }
+  function buildBeats(st) {
+    if (st.bud) return buildBud(st);
+    if (st.view === 'race') return [{ kind: 'race', n: 0 }, { kind: 'race', n: 1, go: '▶ First Fit suchen lassen' }, { kind: 'race', n: 2, go: '▶ Best Fit suchen lassen' }];
+    const sc = st.script, strat = st.strat;
+    if (!sc || !strat) return st.anim ? [{ kind: 'plain', pre: true }, { kind: 'plain', go: 'Zeigen' }] : [{ kind: 'plain' }];
+    const det = !!sc.intro, slowS = strat === 'bf' || strat === 'wf', out = [];
+    const k0 = sc.reqs ? sc.reqs[0] : st.k, s0 = sim(strat, k0);
+    let f = { k: k0, cnt: s0.cmp, run: -1, tags: [], ghost: false, alert: false, face: 'normal', lines: [], ptr: s0.ptr };
+    out.base = f;
+    const push = (kind, go, ch, extra) => { f = Object.assign({}, f, ch); out.push(Object.assign({ kind, go, f }, extra)); };
+    const L = (html, cls) => ({ html, cls: cls || '' });
+    const OK = '<span class="ok">✓</span>', NO = '<span class="no">✗</span>';
+    if (det) { const ls = INTRO[strat].map(h => L(h)); push('say', null, { lines: ls, face: 'think' }, { add: ls.length }); }
+    (sc.reqs || []).forEach(r => {
+      const q = REQ[r], sm = sim(strat, r + 1), log = sm.logs[r], holes = log.before;
+      const say = [L(`${q.name} will <b>${q.n} MiB</b>.`, 'req')];
+      const usePtr = strat === 'nf' && r > 0;
+      if (usePtr) say.push(L(`Mein Zeiger steht bei <b>${holes[log.ptrBefore].name}</b>. Dort suche ich weiter.`));
+      else if (!det) say.push(L(slowS ? 'Ich schaue wieder alle Lücken an.' : 'Ich fange wieder ganz links an.'));
+      push('say', `▶ Anfrage: ${q.name}`, { lines: say, tags: [], run: r, face: 'think', alert: false }, { add: say.length, pulse: usePtr });
+      const tags = log.visits.map(v => ({ i: v.i, ok: v.ok, pick: v.i === log.pick, txt: `${holes[v.i].name}: ${v.n} ${v.ok ? '≥' : '<'} ${q.n} ${v.ok ? '✓' : '✗'}` }));
+      const vl = [], parts = []; let prevI = -1;
+      log.visits.forEach(v => {
+        const h = holes[v.i], wrap = v.i < prevI; prevI = v.i;
+        if (det) vl.push(L(`${h.name}: ${v.n} ${v.ok ? '≥' : '<'} ${q.n} → ${v.ok ? '<span class="ok">passt ✓</span>' : '<span class="no">passt nicht ✗</span>'}${v.ok && slowS ? ` Rest wäre <b>${v.n - q.n}</b>.` : ''}`));
+        else parts.push(`${wrap ? '↩ vorne · ' : ''}${h.name}: ${v.n} ${v.ok ? OK : NO}${v.ok && slowS ? ` (Rest ${v.n - q.n})` : ''}`);
+      });
+      if (!det) vl.push(L(parts.join(' · ')));
+      const cnt = f.cnt + log.visits.length, scanX = { visits: log.visits, slow: slowS };
+      if (log.pick >= 0) {
+        const h = holes[log.pick];
+        const why = L(strat === 'bf' ? `→ Kleinster Rest bei <b>${h.name}</b>. Die nehme ich.` : strat === 'wf' ? `→ Größte Lücke ist <b>${h.name}</b>. Die nehme ich.`
+          : `→ Erste passende Lücke: <b>${h.name}</b>.${det ? ' Ich höre sofort auf zu suchen.' : ''}`);
+        push('scan', '▶ Suche zeigen', { tags, cnt, lines: [say[0]].concat(vl, [why]) }, Object.assign({ add: vl.length + 1 }, scanX));
+        push('place', `▶ ${q.short} ablegen`, { k: r + 1, run: -1, tags: [], face: 'happy', ptr: sm.ptr,
+          lines: [say[0], why, L(`${q.short} liegt jetzt vorne in ${h.name}. Rest: <b>${h.n - q.n} MiB</b>.`, 'good')] }, { add: 1 });
+      } else {
+        const free = holes.reduce((x, h) => x + h.n, 0);
+        push('scan', '▶ Suche zeigen', { tags, cnt, k: r + 1, run: -1, alert: true, face: 'sad',
+          lines: [say[0]].concat(vl, [L(`Keine Lücke hat ${q.n} MiB!`, 'bad'), L(`Dabei sind zusammen <b>${free} MiB</b> frei, nur nicht an einem Stück.`, 'bad')]) },
+          Object.assign({ add: vl.length + 2 }, scanX));
+      }
+    });
+    if (sc.demo) {
+      const d = sc.demo, holes = s0.holes, visits = [];
+      for (let i = 0; i < holes.length; i++) { const ok = holes[i].n >= d.n; visits.push({ i, n: holes[i].n, ok }); if (ok && strat === 'ff') break; }
+      const say = [L(d.intro, 'req')];
+      push('say', null, { lines: say, face: 'think' }, { add: 1 });
+      const tags = visits.map(v => ({ i: v.i, ok: v.ok, pick: v.ok, txt: `${holes[v.i].name}: ${v.n} ${v.ok ? '≥' : '<'} ${d.n} ${v.ok ? '✓' : '✗'}` }));
+      const recap = L(visits.map(v => `${holes[v.i].name}: ${v.n} ${v.ok ? OK : NO}`).join(' · '));
+      push('scan', '▶ Suche zeigen', { tags, face: st.face || 'think', lines: say.concat([recap], d.after.map(h => L(h))) }, { visits, slow: false, demo: true, add: 1 + d.after.length });
+    }
+    if (sc.lines) {
+      const gi = sc.lines.findIndex(l => typeof l !== 'string');
+      const a = sc.lines.slice(0, gi).map(x => L(x)), b = sc.lines.slice(gi + 1).map(x => L(x));
+      push('say', null, { lines: a, face: 'think' }, { add: a.length });
+      push('ghost', '▶ Im RAM zeigen', { ghost: true, lines: a.concat(b), face: st.face || 'sad' }, { add: b.length });
+    }
+    return out;
+  }
+  function addLine(html, cls, anim) {
+    const d = document.createElement('div'); d.className = 'tl' + (cls ? ' ' + cls : '') + (anim ? ' new' : ''); d.innerHTML = html;
+    talk.appendChild(d); talk.scrollTop = talk.scrollHeight;
+  }
+  function renderLines(lines) { talk.innerHTML = ''; lines.forEach(l => addLine(l.html, l.cls, false)); }
+  function drawQueue(st, k, running, cnt) {
+    queue.hidden = !st.strat;
+    if (!st.strat) return;
+    const sm = sim(st.strat, k);
+    $('qname').textContent = 'Anfragen ans OS · ' + STRAT[st.strat].name;
+    qcnt.textContent = cnt === undefined ? sm.cmp : cnt;
+    qrows.innerHTML = REQ.map((q, r) => {
+      let s = '<span class="st">wartet</span>';
+      if (r < k) { const lg = sm.logs[r]; s = lg.pick >= 0 ? `<span class="st ok">✓ in ${lg.before[lg.pick].name}</span>` : '<span class="st bad">✗ kein Platz</span>'; }
+      else if (r === running) s = '<span class="st run">OS sucht …</span>';
+      return `<div class="qrow"><span class="sw" style="background:${q.col}"></span><span>${q.name}</span><span class="mono">${fmt(q.n)}</span>${s}</div>`;
+    }).join('');
+  }
+  function drawRace(ffDone, bfDone) {
+    ['FF', 'BF'].forEach(k => [...$('rg' + k).children].forEach(c => c.classList.remove('seen', 'now', 'best', 'pick')));
+    $('rcFF').textContent = '0 Vergleiche'; $('rcBF').textContent = '0 Vergleiche';
+    const ff = $('rgFF').children, bf = $('rgBF').children;
+    if (ffDone) { for (let i = 0; i <= RFF; i++) ff[i].classList.add('seen'); ff[RFF].classList.add('pick'); $('rcFF').textContent = `${RFF + 1} Vergleiche · fertig ✓`; }
+    if (bfDone) { [...bf].forEach(c => c.classList.add('seen')); bf[RBF].classList.add('pick'); $('rcBF').textContent = `${RACE.length} Vergleiche · fertig ✓`; }
+  }
+  function drawCmp() {
+    const legend = REQ.map(q => `<span class="lg"><i style="background:${q.col}"></i>${q.short}</span>`).join('');
+    vM.innerHTML = `<div class="cintro">Dieselben vier Anfragen. Rot gestrichelt = freie Reste. ${legend}</div>` + ['ff', 'nf', 'bf', 'wf'].map(s => {
+      const r = sim(s, 4), ok = r.logs[3].pick >= 0;
+      const bl = ramBlocks(['spotify', 'a', 'code']).concat(r.placed.map(p => ['p', p.s, p.n, p]))
+        .map(([, s0, n, ap]) => `<div style="left:${pct(s0)};width:${pct(n)};background:${ap ? ap.col : 'var(--os)'}"></div>`).join('');
+      const ho = r.holes.map(h => `<div class="h" style="left:${pct(h.s)};width:${pct(h.n)}"></div>`).join('');
+      return `<div class="mrow"><div class="mhead"><span>${STRAT[s].name}</span><span>${r.cmp} Vergleiche · Spiel ${ok ? '<span class="okc">✓</span>' : '<span class="badc">✗</span>'}</span></div>
+        <div class="mbar">${bl}${ho}</div><div class="mfoot">Reste: ${r.holes.map(h => fmt(h.n)).join(' · ')}</div></div>`;
+    }).join('');
+  }
+  function drawOs(st) {
+    const p2 = !!st.strat || !!st.bud;
+    vO.classList.toggle('p1', !p2);
+    letter.hidden = p2; thought.hidden = p2; ruleEl.hidden = !p2; $('talkbox').hidden = !p2;
+    if (st.bud) { ruleEl.innerHTML = st.phase === 'In echt' ? '<span class="rtag">In echt</span> <b>Modell:</b> ein Stück pro Programm. <b>Echt:</b> viele kleine Seiten.' : `<span class="rtag">Buddy-System</span> ${BRULE}`; talk.innerHTML = ''; setFace('normal'); return; }
+    if (p2) { ruleEl.innerHTML = `<span class="rtag">${STRAT[st.strat].name}</span> ${STRAT[st.strat].rule}`; talk.innerHTML = ''; setFace(st.face || 'normal'); return; }
+    setFace(st.think ? 'think' : 'normal');
+    thought.classList.toggle('off', !st.think);
+    thought.innerHTML = `<b>Hmm … 256 MiB, zusammenhängend.</b> Welche Lücke nehme ich?<ul><li>L1: 448 MiB?</li><li>L2: 320 MiB?</li><li>L3: 1 GiB?</li></ul><span class="dots"><span>.</span><span>.</span><span>.</span></span>`;
+  }
+  function setView(v, st) {
+    vS.classList.toggle('off', v !== 'screen'); vC.classList.toggle('off', v !== 'cpu'); vO.classList.toggle('off', v !== 'os');
+    vR.classList.toggle('off', v !== 'race'); vM.classList.toggle('off', v !== 'cmp');
+    $('ptitle').textContent = v === 'screen' ? 'Bildschirm des Nutzers' : v === 'cpu' ? 'Innen in Programm A: Code und CPU'
+      : v === 'race' ? 'Gedankenexperiment: 100 freie Lücken' : v === 'cmp' ? 'Alle vier Strategien im Vergleich'
+      : st && st.phase === 'In echt' ? 'So ist es in echt' : st && st.bud ? 'OS probiert: Buddy-System' : st && st.strat ? 'OS probiert: ' + STRAT[st.strat].name : 'Das Betriebssystem';
+  }
+  function drawExplain(st) {
+    if (st.log != null) return drawLog(st);
+    // Text, den die Sprechblase rechts nicht schon sagt, erscheint erst am Ende eines Schritts (beim Gedankenexperiment sofort)
+    const n = beats.length, full = n < 2 || beats[0].kind === 'plain' || beats[0].kind === 'race' || (beat === n - 1 && !busy);
+    const html = `<h3>${full ? st.t : st.t0 || st.t}</h3>` + (full && st.h ? `<div class="rest">${st.h}</div>` : '');
+    if (html === ex.dataset.last) return;
+    ex.dataset.last = html; ex.innerHTML = html;
+    fitExplain();
+  }
+  function drawLog(st) {
+    let ul = ex.querySelector('ul.log');
+    if (!ul) { ex.innerHTML = `<h3>${st.t}</h3><ul class="log"><span class="logptr"></span></ul>`; ex.dataset.last = ''; ul = ex.querySelector('ul.log'); }
+    const ptr = ul.querySelector('.logptr');
+    let lis = [...ul.querySelectorAll('li')];
+    lis.slice(st.log + 1).forEach(li => li.remove());
+    for (let i = lis.length; i <= st.log; i++) { const li = document.createElement('li'); li.innerHTML = LOG[i]; ul.appendChild(li); }
+    lis = [...ul.querySelectorAll('li')];
+    lis.forEach((li, i) => { li.classList.toggle('now', i === st.log); li.classList.toggle('past', i < st.log); });
+    fitExplain(); // erst die Schriftgröße, dann den Pfeil setzen
+    ptr.style.top = (lis[st.log].offsetTop + 2) + 'px';
+  }
+  // Langer Text: Schrift etwas kleiner, bis alles in den Kasten passt (nie unter 13,5 px)
+  function fitExplain() {
+    let fs = 17; ex.style.fontSize = fs + 'px';
+    while (ex.scrollHeight > ex.clientHeight + 1 && fs > 13.5) { fs -= 0.5; ex.style.fontSize = fs + 'px'; }
+  }
+  function drawAll(st, animNew) {
+    setView(st.view, st); setMode(!!st.bud, st.phase === 'In echt'); bbox.hidden = !st.bud || st.phase === 'In echt' || !!st.noTree; if (!st.bud) drawRam(st, animNew); drawScreen(st); drawZoom(st); drawCpu(st); drawOs(st);
+    drawQueue(st, st.k, -1); drawExplain(st);
+    if (st.view === 'cmp') drawCmp();
+    alertEl.textContent = st.alertText || ALERT0; alertEl.classList.toggle('top', !!st.strat);
+    alertEl.classList.toggle('off', !st.alert);
+    letter.classList.remove('in');
+    [...parts.children].forEach((d, i) => { if (PH[i] === st.phase) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current');
+      d.classList.toggle('seen', [...seen].some(j => S[j].phase === PH[i])); });
+    nfptr.hidden = true;
+  }
+
+  // ---------- Animationen ----------
+  function moveCursor(el, cb) {
+    if (prepOnly) return;
+    const sr = screen.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const x = (r.left + r.width / 2 - sr.left) / K, y = (r.top + r.height / 2 - sr.top) / K;
+    cursor.style.left = (x - 3) + 'px'; cursor.style.top = (y - 2) + 'px';
+    if (cb) later(850, () => { ripple.style.left = x + 'px'; ripple.style.top = y + 'px'; ripple.classList.remove('go'); void ripple.offsetWidth; ripple.classList.add('go'); cb(); });
+  }
+  function animate(i) {
+    const st = S[i], prevSt = S[i - 1] || st, an = st.anim;
+    if (!an) { drawAll(st, false); return; }
+    if (an.type === 'open') {
+      drawAll(Object.assign({}, st, { open: prevSt.open }), false); lastRam = new Set(['OS', ...prevSt.open]);
+      const sq = $('ic-' + an.app).querySelector('.sq');
+      moveCursor(sq, () => {
+        sq.classList.add('press'); later(160, () => sq.classList.remove('press'));
+        later(250, () => {
+          const w = makeWin(an.app); w.classList.add('in'); wins.appendChild(w); later(30, () => w.classList.remove('in'));
+          $('ic-' + an.app).querySelector('.run').classList.add('on');
+          drawRam(st, true);
+        });
+      });
+    } else if (an.type === 'close') {
+      drawAll(Object.assign({}, st, { open: prevSt.open, gaps: '' }), false);
+      let t = 0;
+      CLOSE.forEach(k => {
+        later(t, () => { const btn = $('w-' + k)?.querySelector('.wbar i'); if (!btn) return;
+          // Fenster nach vorne holen
+          const w = $('w-' + k); wins.appendChild(w);
+          moveCursor(btn, () => {
+            w.classList.add('out'); later(350, () => w.remove());
+            $('ic-' + k).querySelector('.run').classList.remove('on');
+            const rb = $('rb-' + k); if (rb) rb.classList.add('out');
+          });
+        });
+        t += 1500;
+      });
+      later(t + 200, () => drawRam(st, false));
+    } else if (an.type === 'lens') {
+      drawAll(Object.assign({}, st, { view: 'screen', zoom: null }), false);
+      const w = $('w-a'); if (w) { wins.appendChild(w); moveCursor(w.querySelector('.wbody')); }
+      // Erst die CPU-Ansicht, die große Lupe bleibt noch zu. Dann kommt die kleine Lupe und legt sich auf A.
+      later(900, () => { holdLens = true; lensw.classList.remove('on'); drawAll(st, false); holdLens = false; lensIntro(); });
+    } else if (an.type === 'malloc' || an.type === 'fail') {
+      // Startbild = Endbild des vorigen Schritts (PC und C-Zeile bleiben stehen, nichts springt beim Weiterklicken)
+      const fail = an.type === 'fail';
+      const pre = Object.assign({}, st, { pc: prevSt.pc, src: prevSt.src, bubble: '', badBubble: false },
+        fail ? { fail: false, alert: false } : { zoom: st.zoom - 1 });
+      drawAll(pre, false);
+      const tArr = walkPc(prevSt.pc, st.pc, 300);
+      later(tArr + 450, () => { cbubble.textContent = st.bubble; cbubble.classList.toggle('bad', fail); cbubble.classList.remove('off'); });
+      if (fail) {
+        later(tArr + 1300, () => { drawAll(st, false); alertEl.classList.remove('blink'); void alertEl.offsetWidth; alertEl.classList.add('blink'); });
+      } else {
+        // Neuer Block wächst in der Lupe, der Zeiger fährt gleichzeitig mit
+        later(tArr + 1100, () => {
+          const a = ALLOC[st.zoom - 1]; let pos = CODE_MIB; for (let k = 0; k < st.zoom - 1; k++) pos += ALLOC[k].n;
+          const d = document.createElement('div'); d.className = 'zseg heap'; d.style.left = (pos / 256 * 100) + '%'; d.style.width = '0%';
+          d.innerHTML = `${a.name}<br>${a.n} MiB`; zbar.appendChild(d); void d.offsetWidth;
+          d.style.width = (a.n / 256 * 100) + '%'; $('bump').style.left = ((pos + a.n) / 256 * 100) + '%';
+          later(1300, () => drawAll(st, false));
+        });
+      }
+    } else if (an.type === 'os') {
+      drawAll(Object.assign({}, st, { think: false, gaps: '' }), false);
+      letter.classList.add('in'); thought.classList.add('off');
+      later(100, () => letter.classList.remove('in'));
+      later(1200, () => drawAll(st, false));
+    }
+  }
+
+  // ---------- Teil 2: Etappen abspielen ----------
+  const marksOf = (st, f) => f.ghost ? 'ghost' : st.marks === 'crumbs' ? 'crumbs' : '';
+  function setTag(t) {
+    const c = t.ok ? 'ok' : 'no';
+    [$('g' + t.i), $('gt' + t.i)].forEach(x => { if (x) { x.classList.remove('check'); x.classList.add(c); } });
+    const gt = $('gt' + t.i); if (gt) gt.textContent = t.txt;
+  }
+  function setPick(tags) { tags.filter(t => t.pick).forEach(t => { const gt = $('gt' + t.i); if (gt) gt.classList.add('pick'); }); }
+  function placePtr(st, f) {
+    const on = st.strat === 'nf' && st.view === 'os';
+    nfptr.hidden = !on;
+    if (on) nfptr.style.left = pct(sim('nf', f.k).holes[f.ptr].s);
+  }
+  function showAlert(txt) { alertEl.textContent = txt; alertEl.classList.add('top'); alertEl.classList.remove('off', 'blink'); void alertEl.offsetWidth; alertEl.classList.add('blink'); }
+  function drawFrame(st, f, lines) {
+    drawRam(Object.assign({}, st, { marks: marksOf(st, f) }), false, f.k);
+    f.tags.forEach(setTag); setPick(f.tags);
+    drawQueue(st, f.k, f.run, f.cnt);
+    renderLines(lines || f.lines);
+    setFace(f.face);
+    alertEl.textContent = st.alertText || NOPLACE; alertEl.classList.add('top'); alertEl.classList.remove('blink'); alertEl.classList.add('off');
+    placePtr(st, f);
+  }
+  // Die kleine Figur, die zum RAM hinaufläuft
+  function runnerAt(x, y, sc) { runner.style.transform = `translate(${x}px, ${y}px) scale(${sc})`; }
+  function runnerHome(instant) {
+    const sr = stage.getBoundingClientRect(), r = osfig.querySelector('svg').getBoundingClientRect();
+    if (instant) runner.style.transition = 'none';
+    runnerAt((r.left - sr.left) / K, (r.top - sr.top) / K, r.width / K / 60);
+    if (instant) { void runner.offsetWidth; runner.style.transition = ''; }
+  }
+  function runnerToGap(i) {
+    const g = $('g' + i); if (!g) return;
+    const sr = stage.getBoundingClientRect(), r = g.getBoundingClientRect();
+    runnerAt((r.left + r.width / 2 - sr.left) / K - 30, (r.top - sr.top) / K + (r.height / K - 63) / 2, 1);
+  }
+  // Kleine Lupe: erscheint rechts, fährt auf Block A, bleibt kurz liegen, dann zieht sich die große Lupe auf
+  function lensIntro() {
+    mglass.classList.remove('on', 'grow'); mglass.style.transition = 'none';
+    mglass.style.left = '880px'; mglass.style.top = '118px'; void mglass.offsetWidth; mglass.style.transition = '';
+    later(30, () => mglass.classList.add('on'));
+    later(450, () => { mglass.style.left = '558px'; mglass.style.top = '76px'; });
+    later(1750, () => { lensw.classList.add('on'); mglass.classList.add('grow'); });
+    later(2500, () => mglass.classList.remove('on', 'grow'));
+  }
+  function resetRunner() {
+    mglass.classList.remove('on', 'grow');
+    runner.classList.remove('on', 'slow'); osfig.classList.remove('away', 'talking'); nfptr.classList.remove('pulse');
+    stage.querySelectorAll('.gap.check, .gtag.check, .bcell.check').forEach(x => x.classList.remove('check'));
+    stage.querySelectorAll('.bhl.check').forEach(x => x.remove());
+  }
+  // Neue Zeilen erscheinen nacheinander, die Figur "spricht" dabei
+  function sayNew(b, gap, cb) {
+    const ls = b.f.lines.slice(b.f.lines.length - b.add);
+    osfig.classList.add('talking');
+    ls.forEach((l, i) => laterS(i * gap, () => addLine(l.html, l.cls, true)));
+    laterS(Math.max(0, ls.length - 1) * gap + 600, () => { osfig.classList.remove('talking'); cb(); });
+  }
+  function playRace(n, done) {
+    drawRace(n >= 2, false);
+    if (n === 0) { done(); return; }
+    if (n === 1) {
+      const ff = $('rgFF').children;
+      for (let i = 0; i <= RFF; i++) laterS(400 + i * 260, () => {
+        if (i) ff[i - 1].classList.remove('now'); ff[i].classList.add('seen', 'now');
+        $('rcFF').textContent = `${i + 1} Vergleiche`;
+        if (i === RFF) laterS(300, () => { ff[i].classList.remove('now'); ff[i].classList.add('pick'); $('rcFF').textContent = `${RFF + 1} Vergleiche · fertig ✓`; done(); });
+      });
+      return;
+    }
+    const bf = $('rgBF').children; let best = -1;
+    for (let i = 0; i < RACE.length; i++) laterS(400 + i * 75, () => {
+      if (i) bf[i - 1].classList.remove('now'); bf[i].classList.add('seen', 'now');
+      if (RACE[i] >= RQ && (best < 0 || RACE[i] < RACE[best])) { if (best >= 0) bf[best].classList.remove('best'); best = i; bf[i].classList.add('best'); }
+      $('rcBF').textContent = `${i + 1} Vergleiche … (bisher kleinste: ${RACE[best] ?? '–'})`;
+      if (i === RACE.length - 1) laterS(300, () => { bf[i].classList.remove('now'); bf[best].classList.remove('best'); bf[best].classList.add('pick'); $('rcBF').textContent = `${RACE.length} Vergleiche · fertig ✓`; done(); });
+    });
+  }
+  function playBeat(anim) {
+    const st = S[cur], b = beats[beat], prevF = beat ? beats[beat - 1].f : beats.base;
+    busy = !!anim;
+    drawAll(st, false);
+    const done = () => { busy = false; resetRunner(); if (b.f) setFace(b.f.face); updateCtrl(); drawExplain(st); };
+    if (b.kind === 'race') { if (anim) playRace(b.n, done); else drawRace(b.n >= 1, b.n >= 2); return; }
+    if (b.kind === 'bud') { playBud(b, prevF, anim, done); return; }
+    if (!anim) { drawFrame(st, b.f); return; }
+    const keep = b.f.lines.slice(0, b.f.lines.length - b.add);
+    if (b.kind === 'say') {
+      drawFrame(st, b.f, keep);
+      if (b.pulse) { void nfptr.offsetWidth; nfptr.classList.add('pulse'); }
+      laterS(350, () => sayNew(b, 1100, done));
+    } else if (b.kind === 'scan') {
+      drawFrame(st, prevF);
+      const vs = b.visits, step = b.slow ? 1700 : 1500, look = b.slow ? 700 : 500;
+      let cnt = prevF.cnt;
+      runnerHome(true);
+      laterS(80, () => { runner.classList.add('on'); runner.classList.toggle('slow', !!b.slow); osfig.classList.add('away'); });
+      vs.forEach((v, j) => {
+        const t = 150 + j * step;
+        laterS(t, () => runnerToGap(v.i));
+        laterS(t + 700, () => { stage.querySelectorAll('.gap.check, .gtag.check').forEach(x => x.classList.remove('check'));
+          [$('g' + v.i), $('gt' + v.i)].forEach(x => x && x.classList.add('check')); });
+        laterS(t + 700 + look, () => { setTag(b.f.tags[j]); if (!b.demo) qcnt.textContent = ++cnt; });
+      });
+      const tEnd = 150 + vs.length * step;
+      laterS(tEnd, () => { setPick(b.f.tags); runner.classList.remove('slow'); runnerHome(false); });
+      laterS(tEnd + 750, () => {
+        runner.classList.remove('on'); osfig.classList.remove('away');
+        renderLines(keep); drawQueue(st, b.f.k, b.f.run, b.f.cnt); setFace(b.f.face);
+        sayNew(b, 1000, done);
+      });
+    } else if (b.kind === 'place') {
+      drawFrame(st, prevF);
+      laterS(250, () => { drawRam(Object.assign({}, st, { marks: '' }), true, b.f.k); placePtr(st, b.f); drawQueue(st, b.f.k, b.f.run, b.f.cnt); setFace('happy'); });
+      laterS(1250, () => { renderLines(keep); sayNew(b, 900, done); });
+    } else if (b.kind === 'ghost') {
+      drawFrame(st, prevF);
+      laterS(300, () => drawRam(Object.assign({}, st, { marks: 'ghost' }), false, b.f.k));
+      laterS(1500, () => sayNew(b, 1200, done));
+    }
+  }
+
+  // ---------- Teil 3: Buddy-System zeichnen und abspielen ----------
+  // Etappe: { go, keep, say, frames, face }. Ein Bild in frames: { at, mem, hl, ls, look, hold }.
+  // at = [Start, Größe] im Speicher oder 'L16' für die Liste der 16er-Blöcke: Dorthin fliegt die Figur.
+  const budStep = (c, x) => ({ mem: x.mem || c.mem, hl: x.hl || (x.mem ? [] : c.hl), lists: x.ls ? c.lists.concat([x.ls]) : c.lists });
+  function buildBud(st) {
+    const out = []; let c = { mem: st.bud.mem0, hl: [], lists: [] }, lines = [];
+    out.base = { mem: st.bud.mem0, hl: [], lists: [], lines: [], face: 'normal' };
+    st.bud.beats.forEach(b => {
+      c = { mem: c.mem, hl: c.hl, lists: [] };
+      (b.frames || []).forEach(x => { c = budStep(c, x); });
+      const say = b.say.map(l => Array.isArray(l) ? { html: l[0], cls: l[1] } : { html: l, cls: '' });
+      lines = lines.slice(0, b.keep || 0).concat(say);
+      out.push({ kind: 'bud', go: b.go, frames: b.frames || [], add: say.length, f: { mem: c.mem, hl: c.hl, lists: c.lists, lines, face: b.face || 'normal' } });
+    });
+    return out;
+  }
+  let modeBud = null, lastBud = new Set(), lastTree = new Set();
+  function setMode(bud, real) {
+    const key = bud + '|' + !!real;
+    if (key === modeBud) return;
+    modeBud = key;
+    bbox.hidden = !bud || !!real; bar.classList.toggle('bud', bud);
+    $('ramlbl').textContent = real ? 'Ein kleiner Ausschnitt aus dem RAM: 16 Seiten' : bud ? 'Speicher für das Buddy-System: 64 MiB' : 'RAM des Rechners: 4 GiB';
+    $('ramunit').textContent = real ? 'Nummer der Seite' : bud ? 'Adresse in MiB' : 'Adresse in GiB';
+    $('scale').textContent = real ? 'Ein Kästchen = eine Seite = 4 KiB. Ein echter RAM mit 4 GiB hat rund eine Million Seiten.' : bud ? 'Ein Kasten = 8 MiB. Kleinster Block: 4 MiB.'
+      : 'Ein Kasten = 512 MiB. Werte ungefähr wie auf einem echten Rechner mit 4 GiB RAM.';
+    [...axis.children].forEach((sp, g) => {
+      sp.textContent = real ? (g % 2 ? g * 2 : 'Seite ' + g * 2) : bud ? (g % 2 ? g * 8 : g * 8 + ' MiB') : g % 2 ? (g / 2).toString().replace('.', ',') : (g / 2) + ' GiB'; });
+  }
+  function drawBud(f, pop) {
+    bar.innerHTML = ''; stage.querySelectorAll('.mem .gtag').forEach(t => t.remove());
+    const now = new Set(), pgv = f.mem.some(b => b[2] && BP[b[2]].pg);
+    f.mem.forEach(([s, n, id, req]) => {
+      const key = s + ':' + n + ':' + (id || ''); now.add(key);
+      const d = document.createElement('div'); d.style.left = bp(s); d.style.width = bp(n);
+      if (id) {
+        const p = BP[id], w = n - req;
+        d.className = 'blk bud'; d.style.background = p.col;
+        d.innerHTML = `<div class="bu" style="flex-basis:${req / n * 100}%">${n < 8 ? p.ab : p.name}<small>${p.pg ? (n < 8 ? '' : 'ein Stück') : n < 8 ? req + '/' + n : w ? req + ' von ' + n + ' MiB' : n + ' MiB'}</small></div>`
+          + (w ? `<div class="waste">${n >= 16 ? w + ' MiB<br>ungenutzt' : ''}</div>` : '');
+      } else { d.className = 'bfree'; d.innerHTML = `frei<small>${pgv ? (n < 8 ? 'Seite' : n / 4 + ' Seiten') : n + ' MiB'}</small>`; }
+      if (pop && !lastBud.has(key)) d.classList.add('fresh');
+      bar.appendChild(d);
+    });
+    lastBud = now;
+    f.hl.forEach(h => {
+      const m = document.createElement('div'); m.className = 'bhl ' + h.c; m.style.left = bp(h.s); m.style.width = bp(h.n); bar.appendChild(m);
+      const t = document.createElement('div'); t.className = 'gtag ' + h.c; t.style.left = bp(h.s + h.n / 2); t.textContent = h.txt; bar.parentElement.appendChild(t);
+    });
+    // Baum: jedes Blatt und alle Blöcke darüber, die geteilt wurden
+    const nodes = new Map();
+    f.mem.forEach(([s, n, id]) => {
+      nodes.set(s + ':' + n, { s, n, c: id ? 'us' : 'fr', id });
+      for (let z = n * 2; z <= BN; z *= 2) { const a = Math.floor(s / z) * z; nodes.set(a + ':' + z, { s: a, n: z, c: 'sp' }); }
+    });
+    const tnow = new Set();
+    btree.innerHTML = BSZ.map(z => `<div class="trow"><span class="tsz">${z}</span><div class="tline">` + [...nodes.values()].filter(x => x.n === z).map(x => {
+      const key = x.s + ':' + x.n + ':' + x.c + (x.id || ''); tnow.add(key);
+      return `<div class="tn ${x.c}${pop && !lastTree.has(key) ? ' fresh' : ''}" style="left:${bp(x.s)};width:${bp(x.n)}${x.id ? ';background:' + BP[x.id].col : ''}">${x.id ? (z >= 16 ? BP[x.id].name : BP[x.id].ab) : z}</div>`;
+    }).join('') + '</div></div>').join('');
+    lastTree = tnow;
+    blists.innerHTML = BSZ.slice().reverse().map(z => {
+      const k = f.mem.filter(b => b[1] === z && !b[2]).length, m = f.lists.find(l => l.sz === z);
+      return `<div class="bcell${k ? ' has' : ''}${m ? (m.ok ? ' ok' : ' no') : ''}" id="bl-${z}"><b>${z} MiB</b><span>${k ? k + (k > 1 ? ' Blöcke' : ' Block') : 'leer'}</span>${m ? `<i>${m.ok ? '✓' : '✗'}</i>` : ''}</div>`;
+    }).join('');
+  }
+  function budFrame(f, lines) { drawBud(f, false); renderLines(lines || f.lines); setFace(f.face); }
+  function runnerToAt(at) {
+    const sr = stage.getBoundingClientRect();
+    if (typeof at === 'string') { const r = $('bl-' + at.slice(1)).getBoundingClientRect(); runnerAt((r.left + r.width / 2 - sr.left) / K - 21, (r.top - sr.top) / K - 40, 0.7); return; }
+    const r = bar.getBoundingClientRect();
+    runnerAt((r.left + (at[0] + at[1] / 2) / BN * r.width - sr.left) / K - 30, (r.top - sr.top) / K + (r.height / K - 63) / 2, 1);
+  }
+  function markAt(at) {
+    stage.querySelectorAll('.bcell.check').forEach(x => x.classList.remove('check'));
+    stage.querySelectorAll('.bhl.check').forEach(x => x.remove());
+    if (typeof at === 'string') { $('bl-' + at.slice(1)).classList.add('check'); return; }
+    const m = document.createElement('div'); m.className = 'bhl check'; m.style.left = bp(at[0]); m.style.width = bp(at[1]); bar.appendChild(m);
+  }
+  function playBud(b, prevF, anim, done) {
+    if (!anim) { budFrame(b.f); return; }
+    const keep = b.f.lines.slice(0, b.f.lines.length - b.add);
+    if (!b.frames.length) { budFrame(Object.assign({}, b.f, { face: 'normal' }), keep); laterS(350, () => sayNew(b, 1100, done)); return; }
+    // Erst das alte Bild, dann fliegt die Figur los. Der neue Text kommt erst, wenn sie zurück ist.
+    let c = { mem: prevF.mem, hl: prevF.hl, lists: [] };
+    drawBud(c, false); renderLines(prevF.lines); setFace('think');
+    runnerHome(true);
+    laterS(80, () => { runner.classList.add('on'); osfig.classList.add('away'); });
+    let t = 150;
+    b.frames.forEach(x => {
+      const isL = typeof x.at === 'string', look = x.look || (isL ? 450 : 650), t0 = t;
+      laterS(t0, () => runnerToAt(x.at));
+      laterS(t0 + 720, () => markAt(x.at));
+      laterS(t0 + 720 + look, () => { c = budStep(c, x); drawBud(c, true); });
+      t += 720 + look + (x.hold || (isL ? 350 : 550));
+    });
+    laterS(t, () => runnerHome(false));
+    laterS(t + 750, () => { runner.classList.remove('on'); osfig.classList.remove('away'); renderLines(keep); setFace(b.f.face); sayNew(b, 1000, done); });
+  }
+
+  // ---------- Steuerung ----------
+  function updateCtrl() {
+    const n = beats.length, last = beat === n - 1, nx = $('next'), nb = last ? null : beats[beat + 1];
+    // Gelb: Der nächste Klick spielt eine Animation ab. Schwarz: weiter zum nächsten Schritt.
+    nx.textContent = busy ? 'läuft … überspringen' : nb ? (nb.go || 'Zeigen').replace(/^▶\s*/, '') + ' →' : 'Weiter →';
+    nx.classList.toggle('play', !busy && !!nb);
+    nx.disabled = !busy && last && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && beat === 0;
+    $('pphase').textContent = S[cur].phase;
+    $('act').textContent = S[cur].phase;
+    $('model').hidden = S[cur].phase === 'In echt'; // dort zeigen wir ja gerade, wie es in echt ist
+    $('cnt').textContent = `Schritt ${cur + 1} / ${S.length}` + (n > 1 ? ` · Etappe ${beat + 1} / ${n}` : '');
+  }
+  function show(i, b, anim) {
+    clearT(); resetRunner();
+    cur = Math.max(0, Math.min(S.length - 1, i)); seen.add(cur);
+    stage.style.setProperty('--sp', spd());
+    $('tempo').hidden = !S[cur].strat; $('pphase').hidden = !!S[cur].strat;
+    const st = S[cur];
+    beats = buildBeats(st); beat = b < 0 ? beats.length - 1 : Math.min(b, beats.length - 1); busy = false;
+    if (beats[0].kind === 'plain') {
+      if (beats[beat].pre) { prepOnly = true; animate(cur); clearT(); prepOnly = false; } // nur das Startbild, ohne Animation
+      else if (anim && st.anim) animate(cur);
+      else { lastRam = new Set(['OS', ...st.open]); drawAll(st, false); }
+    }
+    else playBeat(anim);
+    updateCtrl();
+  }
+  function next() {
+    if (busy) return show(cur, beat, false);
+    if (beat < beats.length - 1) return show(cur, beat + 1, true);
+    if (cur < S.length - 1) show(cur + 1, 0, true);
+  }
+  function prev() {
+    if (beat > 0) return show(cur, beat - 1, false);
+    if (cur > 0) show(cur - 1, -1, false);
+  }
+  $('prev').onclick = prev;
+  $('next').onclick = next;
+  $('again').onclick = () => show(cur, beat, true);
+  const tIn = $('tempoIn');
+  const setTempo = v => { SPEED = v; tIn.value = v; $('tempoV').textContent = String(v).replace('.', ',') + '×'; stage.style.setProperty('--sp', spd()); };
+  setTempo(SPEED);
+  tIn.addEventListener('input', () => { setTempo(parseFloat(tIn.value)); try { localStorage.setItem('kgue4-tempo', SPEED); } catch (e) {} });
+  tIn.addEventListener('change', () => tIn.blur()); // danach steuern Pfeiltasten und Leertaste wieder die Schritte
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.target === tIn) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'r' || e.key === 'R') show(cur, beat, true);
+  });
+  // Wie KGÜ 5: Die Bühne wird so skaliert, dass alles ohne Scrollen auf den Bildschirm passt.
+  function fit() {
+    const w = box.clientWidth, rest = document.querySelector(".topline").offsetHeight + document.querySelector('.ctl').offsetHeight + 30;
+    K = Math.max(0.4, Math.min(w / 1000, (window.innerHeight - rest) / 548, 1.6));
+    stage.style.transform = 'scale(' + K + ')'; stage.style.left = (w - 1000 * K) / 2 + 'px'; box.style.height = 548 * K + 'px';
+  }
+  window.addEventListener('resize', () => { fit(); placePc(S[cur].pc); });
+  window.__go = (i, b) => show(i, b == null ? -1 : b, false); // nur zum Testen
+  fit(); show(0, 0, false);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { fit(); fitExplain(); placePc(S[cur].pc); });
+})();
+</script>

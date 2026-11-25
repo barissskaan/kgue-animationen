@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGÜ 3 · Aufgabe 2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Gleicher Aufbau wie die KGÜ-5-Seiten: bewusst nur hell (Beamer).
+   Links Editor und Terminal, rechts Stack und Heap. Alle Ausgaben echt (gcc / rustc 1.99), Fehlermeldungen gekürzt.
+   Regel: erst Text, Animation erst nach Klick. Keine Emoji. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f1f2f5;
+  --warn: #c2410c; --err: #b42318; --ok: #3f6f12; --hl: #fff1a8; --ptr: #ffd400; --cand: #2f5fb8;
+  --term: #1b1f27; --ram: #eef1f6;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 10px 16px 10px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 24px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.top .act { color: var(--fg); }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--cand); outline-offset: 2px; }
+code, .mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+.cap code { font-size: 0.88em; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 0 0; }
+.stage.noanim, .stage.noanim * { transition: none !important; animation: none !important; }
+.lab { position: absolute; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; white-space: nowrap; }
+
+/* Editor */
+#ed { position: absolute; left: 10px; top: 4px; width: 500px; height: 262px; border: 2px solid var(--fg); border-radius: 10px; background: #fbfbfc; overflow: hidden; }
+#edbar { height: 28px; background: var(--soft); border-bottom: 1.5px solid var(--line); display: flex; align-items: flex-end; padding-left: 8px; }
+#edtab { height: 24px; padding: 0 12px; background: #fbfbfc; border: 1.5px solid var(--line); border-bottom: none; border-radius: 6px 6px 0 0; font-family: var(--font-mono); font-size: 13px; line-height: 22px; }
+#code { position: absolute; left: 0; right: 0; top: 30px; bottom: 0; transition: opacity 0.35s; }
+#code.fade { opacity: 0; }
+.cl { position: absolute; left: 0; right: 0; height: 19px; font-family: var(--font-mono); font-variant-ligatures: none; font-size: 14px; line-height: 19px; white-space: pre; transition: background 0.5s; }
+.cl i { display: inline-block; width: 34px; padding-right: 8px; text-align: right; color: #9aa0ab; font-style: normal; }
+.cl.chg { background: var(--hl); }
+#lhl { position: absolute; left: 0; right: 0; height: 19px; background: rgba(47, 95, 184, 0.13); border-left: 4px solid var(--cand); transition: top 0.45s ease-in-out, opacity 0.3s; }
+#lhl.err { background: rgba(180, 35, 24, 0.12); border-left-color: var(--err); }
+.k { color: #7a3fb0; font-weight: 600; }
+.s { color: #2f7a35; }
+.m { color: #a15c07; }
+.ty { color: #1f5fa8; }
+.cm { color: #8a909b; }
+
+/* Terminal */
+#tm { position: absolute; left: 10px; top: 272px; width: 500px; height: 104px; border: 2px solid var(--fg); border-radius: 10px; background: var(--term); overflow: hidden; }
+#tmbar { height: 18px; background: #2c323d; display: flex; align-items: center; gap: 5px; padding-left: 8px; }
+#tmbar b { width: 8px; height: 8px; border-radius: 50%; background: #5b6372; }
+#tmbar span { margin-left: 8px; font-size: 11px; color: #aab2c0; letter-spacing: 0.05em; }
+#tlines { padding: 3px 8px; }
+.tl { font-family: var(--font-mono); font-variant-ligatures: none; font-size: 12.5px; line-height: 16px; white-space: pre; color: #e6e9ef; opacity: 0; transform: translateX(-6px); transition: opacity 0.3s, transform 0.3s; }
+.tl.on { opacity: 1; transform: none; }
+.tl.cmd::before { content: "$ "; color: #7fd18b; }
+.tl.err { color: #ff8a80; }
+.tl.ok { color: #b9f6a0; }
+.tl.dim { color: #8e96a5; }
+
+/* Speicher */
+.memb { position: absolute; top: 26px; height: 350px; border: 2px solid var(--fg); border-radius: 10px; background: var(--ram); overflow: hidden; }
+#stk { left: 528px; width: 214px; }
+#hp { left: 770px; width: 220px; }
+#frame { position: absolute; left: 0; right: 0; top: 0; height: 26px; background: #dfe4ec; border-bottom: 1.5px solid var(--line); font-family: var(--font-mono); font-size: 13px; line-height: 25px; padding-left: 10px; color: var(--muted); }
+#frame b { color: var(--fg); }
+#hpempty { position: absolute; left: 0; right: 0; top: 150px; text-align: center; font-size: 15px; color: var(--muted); transition: opacity 0.4s; }
+.vc { position: absolute; left: 536px; width: 198px; border: 2px solid var(--fg); border-radius: 9px; background: #fff; display: flex; z-index: 3;
+  transition: top 0.9s ease-in-out, opacity 0.5s, border-color 0.4s, background 0.4s; }
+.vc.hide { opacity: 0; }
+.vc .vn { width: 38px; border-right: 1.5px solid var(--line); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-weight: 600; font-size: 22px; }
+.vc .vf { flex: 1; }
+.fld { height: 28px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px dashed var(--line); }
+.fld:last-child { border-bottom: none; }
+.fld small { width: 34px; font-size: 12px; color: var(--muted); }
+.fld b { font-family: var(--font-mono); font-size: 17px; font-weight: 600; border-radius: 4px; padding: 0 3px; }
+.fld b.flash { animation: flash 1.2s; }
+@keyframes flash { 0% { background: var(--ptr); } 100% { background: transparent; } }
+.vt { position: absolute; right: 6px; top: -11px; font-family: var(--font-mono); font-size: 11.5px; background: #fff; border: 1.5px solid var(--line); border-radius: 5px; padding: 0 5px; color: var(--muted); }
+.vx { position: absolute; right: 8px; top: 50%; transform: translateY(-50%) rotate(-6deg) scale(0.7); font-size: 15px; font-weight: 600; color: var(--err); background: #fff; border: 2px solid var(--err); border-radius: 6px; padding: 1px 8px; opacity: 0; transition: opacity 0.4s, transform 0.4s; white-space: nowrap; }
+.vc.moved { border-color: #a9afba; background: #f3f4f6; color: #9aa0ab; }
+.vc.moved .vx { opacity: 1; transform: translateY(-50%) rotate(-6deg); }
+.vc.gone { opacity: 0.25; }
+.hb { position: absolute; left: 780px; top: 70px; width: 200px; transition: opacity 0.5s, transform 0.5s; z-index: 2; }
+.hb.hide { opacity: 0; transform: translateY(10px); }
+.hb .ha { font-family: var(--font-mono); font-size: 13px; color: var(--muted); height: 20px; }
+.hcells { display: flex; gap: 2px; border: 2px solid var(--fg); border-radius: 6px; padding: 3px; background: #fff; transition: border-color 0.4s, background 0.4s; }
+.hc { width: 30px; height: 34px; border: 1.5px solid var(--line); border-radius: 3px; font-family: var(--font-mono); font-weight: 600; font-size: 17px; display: flex; align-items: center; justify-content: center; position: relative; }
+.hc span { transition: opacity 0.3s, transform 0.3s; }
+.hc span.new { opacity: 0; transform: translateY(-8px); }
+.hc.q span { color: #b0b5bf; }
+.hstat { margin-top: 8px; display: inline-block; font-size: 14.5px; font-weight: 600; border: 2px solid var(--fg); border-radius: 999px; padding: 1px 10px; transition: all 0.4s; }
+.hb.free .hcells { border-color: #a9afba; background: #f3f4f6; }
+.hb.free .hc span { color: #a9afba; }
+.hb.free .hstat { border-color: #a9afba; color: var(--muted); }
+.hb.boom .hcells { border-color: var(--err); background: #fde7e4; animation: shake 0.5s 2; }
+.hb.boom .hstat { border-color: var(--err); color: #fff; background: var(--err); }
+@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+#arrows { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; pointer-events: none; z-index: 4; overflow: visible; }
+#arrows path.ln { fill: none; stroke-width: 2.5; stroke-dasharray: 160; transition: stroke-dashoffset 0.7s, stroke 0.4s, opacity 0.4s; }
+#arrows path.ln.ok { stroke: var(--cand); }
+#arrows path.ln.bad { stroke: var(--err); }
+
+/* Buch (nur auf dem ersten Schritt) */
+#book { position: absolute; inset: 0; background: #fff; z-index: 20; transition: opacity 0.5s; }
+#book.off { opacity: 0; pointer-events: none; }
+#book .bkc { position: absolute; left: 260px; top: 30px; width: 600px; font-size: 18px; line-height: 1.4; }
+#book h3 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
+#book p { margin: 0 0 10px; }
+#book code { font-size: 16px; background: var(--soft); border-radius: 4px; padding: 0 5px; }
+#book .tip { background: var(--hl); border-radius: 8px; padding: 6px 10px; }
+
+/* Schluss: das Rust-Buch */
+#fin { position: absolute; inset: 0; background: #fff; z-index: 25; transition: opacity 0.5s; }
+#fin.off { opacity: 0; pointer-events: none; }
+#fin .fbk { position: absolute; left: 20px; top: 14px; width: 190px; text-align: center; font-size: 14.5px; line-height: 1.3; }
+#fin .fbk code { font-size: 13px; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+#fin .fr { position: absolute; left: 230px; top: 6px; right: 10px; }
+#fin h3 { margin: 0 0 6px; font-size: 20px; }
+.fq { display: flex; align-items: center; gap: 12px; border: 2px solid var(--fg); border-radius: 10px; padding: 6px 12px; margin-bottom: 7px; background: #fff; opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s; }
+.fq.on { opacity: 1; transform: none; }
+.fq .q { flex: 1; font-size: 16px; line-height: 1.25; }
+.fq .q b { display: block; font-size: 16.5px; }
+.fq .q b code { font-size: 15px; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+.fq .q span { color: var(--muted); font-size: 14.5px; }
+.fq .kp { flex: none; font-size: 13.5px; font-weight: 600; background: var(--hl); border: 1.5px solid #c9a300; border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+
+.cap { margin-top: 8px; min-height: 118px; }
+.cap h1 { font-size: 24px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.cap p { margin: 0; font-size: 21px; line-height: 1.35; max-width: 84ch; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot { width: 30px; height: 30px; padding: 0; border-radius: 50%; border-color: var(--line); font-family: var(--font-mono); font-size: 14px; }
+.dot[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#next { min-width: 170px; background: var(--fg); color: var(--bg); margin-left: auto; }
+#next.play { background: var(--ptr); color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="act" id="act"></span><span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+      <div id="ed"><div id="edbar"><div id="edtab"></div></div><div id="code"><div id="lhl"></div><div id="clines"></div></div></div>
+      <div id="tm"><div id="tmbar"><b></b><b></b><b></b><span id="tmt">TERMINAL</span></div><div id="tlines"></div></div>
+      <div class="lab" style="left:530px;top:4px">Stack</div>
+      <div class="lab" style="left:772px;top:4px">Heap</div>
+      <div class="memb" id="stk"><div id="frame"></div></div>
+      <div class="memb" id="hp"><div id="hpempty">leer</div></div>
+      <div id="vars"></div>
+      <div id="fin" class="off"><div class="fbk"><svg width="148" height="200" viewBox="0 0 118 160" aria-hidden="true"><rect x="10" y="6" width="100" height="148" rx="4" fill="#d9d4c7" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="100" height="148" rx="4" fill="#2b2f36" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="12" height="148" fill="#1d2026"/><circle cx="60" cy="58" r="22" fill="none" stroke="#f5a65b" stroke-width="5"/><circle cx="60" cy="58" r="8" fill="#f5a65b"/><g stroke="#f5a65b" stroke-width="5" stroke-linecap="round"><path d="M60 28 v-6 M60 94 v-6 M30 58 h-6 M96 58 h-6 M39 37 l-4 -4 M85 83 l-4 -4 M39 79 l-4 4 M85 33 l-4 4"/></g><text x="60" y="118" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">The Rust</text><text x="60" y="131" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Programming</text><text x="60" y="144" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Language</text></svg><div style="margin-top:6px"><b>Kostenlos online:</b><br><code>doc.rust-lang.org/book</code></div></div><div class="fr"><h3>Für alle, die mehr wissen wollen</h3><div class="fq"><div class="q"><b>Was ist Ownership, was ein Move?</b><span>Jeder Wert hat genau einen Besitzer.</span></div><div class="kp">Kap. 4.1</div></div><div class="fq"><div class="q"><b>Wann wird kopiert: <code>Copy</code> oder <code>Clone</code>?</b><span>Warum Zahlen kopiert werden und ein <code>String</code> verschoben.</span></div><div class="kp">Kap. 4.1</div></div><div class="fq"><div class="q"><b>Was bedeutet <code>&amp;</code> vor einer Variable?</b><span>Ausleihen statt besitzen: Referenzen.</span></div><div class="kp">Kap. 4.2</div></div><div class="fq"><div class="q"><b>Was ist ein <code>struct</code>?</b><span>Eigene Datentypen mit mehreren Feldern.</span></div><div class="kp">Kap. 5.1</div></div><div class="fq"><div class="q"><b>Was macht <code>#[derive(Debug)]</code>?</b><span>Rust schreibt den Code für solche Traits selbst.</span></div><div class="kp">Kap. 5.2 und Anhang C</div></div></div></div>
+      <div id="book" class="off">
+        <div style="position:absolute;left:90px;top:40px"><svg width="148" height="200" viewBox="0 0 118 160" aria-hidden="true"><rect x="10" y="6" width="100" height="148" rx="4" fill="#d9d4c7" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="100" height="148" rx="4" fill="#2b2f36" stroke="var(--fg)" stroke-width="2.5"/><rect x="4" y="2" width="12" height="148" fill="#1d2026"/><circle cx="60" cy="58" r="22" fill="none" stroke="#f5a65b" stroke-width="5"/><circle cx="60" cy="58" r="8" fill="#f5a65b"/><g stroke="#f5a65b" stroke-width="5" stroke-linecap="round"><path d="M60 28 v-6 M60 94 v-6 M30 58 h-6 M96 58 h-6 M39 37 l-4 -4 M85 83 l-4 -4 M39 79 l-4 4 M85 33 l-4 4"/></g><text x="60" y="118" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">The Rust</text><text x="60" y="131" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Programming</text><text x="60" y="144" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Language</text></svg></div>
+        <div class="bkc"><h3>Zum Weiterlernen: „The Rust Programming Language“</h3>
+          <p>Das offizielle Buch, geschrieben vom Rust-Team. Kostenlos online: <code>doc.rust-lang.org/book</code></p>
+          <p>Liest sich sehr angenehm und erklärt alles Schritt für Schritt, mit vielen Beispielen. Ideal für alle, die Rust lernen oder von C umsteigen wollen.</p>
+          <p class="tip">Passt zu heute: <b>Kapitel 4, „Understanding Ownership“</b>. Dort geht es genau um Move, Copy und Clone.</p></div>
+      </div>
+      <div class="hb hide" id="hb"><div class="ha" id="ha">0x5000</div><div class="hcells" id="hcells"></div><div class="hstat" id="hstat"></div></div>
+      <svg id="arrows" viewBox="0 0 1000 380">
+        <defs>
+          <marker id="mk-ok" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#2f5fb8"/></marker>
+          <marker id="mk-bad" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="#b42318"/></marker>
+        </defs>
+        <g id="arrg"></g>
+      </svg>
+    </div>
+  </div>
+  <div class="cap"><h1 id="ttl"></h1><p id="say"></p></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Zurück">←</button>
+    <span id="dots" style="display:flex;gap:6px"></span>
+    <button id="replay" aria-label="Teil neu starten" title="Teil neu starten (R)">↺</button>
+    <button id="again" aria-label="Letzte Animation wiederholen" title="Letzte Animation wiederholen (W)" style="display:inline-flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8 A5.5 5.5 0 1 1 11.6 3.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12.6 1 V4.6 H9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.3 5.6 L10.4 8 L6.3 10.4 Z" fill="currentColor"/></svg>Nochmal</button>
+    <button id="next">Weiter →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), box = $('box');
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  /* ---------- Code (getestet mit gcc und rustc 1.99) ---------- */
+  const CODE = {
+    c: { file: 'double_free.c', lines: [
+      '#include <stdlib.h>',
+      '#include <string.h>',
+      '',
+      'int main(void) {',
+      '    char *a = malloc(6);',
+      '    strcpy(a, "Hallo");',
+      '    char *b = a;',
+      '    free(a);',
+      '    free(b);',
+      '    return 0;',
+      '}'] },
+    rs: { file: 'src/main.rs', lines: [
+      'fn main() {',
+      '    let a = String::from("Hallo");',
+      '    let b = a;',
+      '    println!("{b}");',
+      '}'] },
+    rsbad: { file: 'src/main.rs', lines: [
+      'fn main() {',
+      '    let a = String::from("Hallo");',
+      '    let b = a;',
+      '    drop(a);      // wie free(a)',
+      '    drop(b);      // wie free(b)',
+      '}'] },
+    st: { file: 'src/main.rs', lines: [
+      '#[derive(Debug)]',
+      'struct MyStruct {',
+      '    data: i64,',
+      '}',
+      '',
+      'fn func_struct() {',
+      '    let mut a = MyStruct { data: 42 };',
+      '    let b = a;',
+      '    println!("Struct a: {:?}, Struct b: {:?}", a, b);',
+      '    a.data = 123;',
+      '    println!("Struct a: {:?}, Struct b: {:?}", a, b);',
+      '}'] },
+    int: { file: 'src/main.rs', lines: [
+      'fn func_int() {',
+      '    let mut a = 42;',
+      '    let b = a;',
+      '    println!("a: {:?}, b: {:?}", a, b);',
+      '    a = 123;',
+      '    println!("a: {:?}, b: {:?}", a, b);',
+      '}'] }
+  };
+  CODE.fix = { file: 'src/main.rs', lines: CODE.st.lines.map((l, i) => i === 0 ? '#[derive(Debug, Clone)]' : i === 7 ? '    let b = a.clone();' : l) };
+  CODE.half = { file: 'src/main.rs', lines: ['#[derive(Debug, Copy)]', ...CODE.st.lines.slice(1)] };
+
+  const KW = new Set('int char void return include fn let mut struct drop'.split(' '));
+  const TY = new Set('String MyStruct i64 i32'.split(' '));
+  function hl(line) {
+    const i = line.indexOf('//');
+    const code = i >= 0 ? line.slice(0, i) : line, cm = i >= 0 ? line.slice(i) : '';
+    let h = '', re = /("[^"]*")|(#\[[^\]]*\]|#include)|([A-Za-z_][A-Za-z_0-9]*!?)|([^"A-Za-z_#]+|#)/g, m;
+    while ((m = re.exec(code))) {
+      if (m[1]) h += '<span class="s">' + esc(m[1]) + '</span>';
+      else if (m[2]) h += '<span class="m">' + esc(m[2]) + '</span>';
+      else if (m[3]) {
+        const w = m[3];
+        h += w.endsWith('!') ? '<span class="m">' + w + '</span>' : KW.has(w) ? '<span class="k">' + w + '</span>' : TY.has(w) ? '<span class="ty">' + w + '</span>' : w;
+      } else h += esc(m[4]);
+    }
+    return h + (cm ? '<span class="cm">' + esc(cm) + '</span>' : '');
+  }
+
+  /* ---------- Zeichnen ---------- */
+  const LH = 19;
+  let codeKey = null, termShown = [], varEls = {}, prevVals = {};
+  const STR = (ptr, len, cap) => [['ptr', ptr], ['len', len], ['cap', cap]];
+
+  function cardTop(i, vars) {
+    let y = 64;
+    for (let j = 0; j < i; j++) y += (vars[j].f.length * 28 + 4) + 26;
+    return y;
+  }
+
+  function drawCode(st, anim) {
+    const c = CODE[st.code];
+    const render = () => {
+      $('edtab').textContent = c.file;
+      $('clines').innerHTML = c.lines.map((l, i) => '<div class="cl' + ((st.chg || []).includes(i + 1) ? ' chg' : '') + '" style="top:' + i * LH + 'px"><i>' + (i + 1) + '</i>' + hl(l) + '</div>').join('');
+    };
+    if (st.code !== codeKey) {
+      if (anim && codeKey) {
+        $('code').classList.add('fade');
+        later(380, () => { render(); $('code').classList.remove('fade'); });
+      } else render();
+      codeKey = st.code;
+    } else {
+      [...$('clines').children].forEach((el, i) => el.classList.toggle('chg', (st.chg || []).includes(i + 1)));
+    }
+    const h = $('lhl');
+    h.style.opacity = st.line ? 1 : 0;
+    if (st.line) h.style.top = (st.line - 1) * LH + 'px';
+    h.classList.toggle('err', !!st.lerr);
+  }
+
+  function drawTerm(st, anim) {
+    const T = st.term || [];
+    $('tmt').textContent = st.tt || 'TERMINAL';
+    const same = termShown.length <= T.length && termShown.every((l, i) => l[0] === T[i][0]);
+    const start = same ? termShown.length : 0;
+    if (!same) $('tlines').innerHTML = '';
+    T.slice(start).forEach((l, j) => {
+      const d = document.createElement('div');
+      d.className = 'tl ' + (l[1] || '');
+      d.textContent = l[0];
+      $('tlines').appendChild(d);
+      if (anim) { void d.offsetWidth; d.style.transitionDelay = (0.2 + j * 0.3) + 's'; }
+      d.classList.add('on');
+    });
+    termShown = T.map(l => l.slice());
+  }
+
+  function drawVars(st, anim) {
+    const V = st.vars || [];
+    const names = V.map(v => v.n);
+    Object.keys(varEls).forEach(n => { if (!names.includes(n)) { varEls[n].remove(); delete varEls[n]; delete prevVals[n]; } });
+    V.forEach((v, i) => {
+      let el = varEls[v.n], fresh = false;
+      if (!el) {
+        el = document.createElement('div'); el.className = 'vc hide'; fresh = true;
+        el.innerHTML = '<div class="vn">' + v.n + '</div><div class="vf"></div><div class="vt"></div><div class="vx">ungültig</div>';
+        $('vars').appendChild(el); varEls[v.n] = el;
+      }
+      el.querySelector('.vt').textContent = v.t;
+      const vf = el.querySelector('.vf');
+      if (vf.children.length !== v.f.length) vf.innerHTML = v.f.map(f => '<div class="fld"><small>' + f[0] + '</small><b></b></div>').join('');
+      v.f.forEach((f, k) => {
+        const b = vf.children[k].querySelector('b'), old = b.textContent;
+        b.textContent = f[1];
+        if (anim && !fresh && old !== String(f[1])) { b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); b.style.animationDelay = (v.fd || 0) + 's'; }
+      });
+      const top = cardTop(i, V);
+      if (fresh && anim && v.from && varEls[v.from]) {
+        el.style.transition = 'none'; el.style.top = varEls[v.from].style.top; el.classList.remove('hide');
+        void el.offsetWidth; el.style.transition = '';
+        el.style.top = top + 'px';
+      } else {
+        el.style.top = top + 'px';
+        if (fresh && anim) { void el.offsetWidth; }
+        el.classList.remove('hide');
+      }
+      el.classList.toggle('moved', !!v.moved);
+      el.classList.toggle('gone', !!v.gone);
+      el.style.transitionDelay = anim && (v.moved || v.gone) && !el.dataset.was ? (v.md != null ? v.md : 0.9) + 's' : '0s';
+      el.querySelector('.vx').style.transitionDelay = el.style.transitionDelay;
+      el.dataset.was = (v.moved || v.gone) ? '1' : '';
+    });
+  }
+
+  function drawHeap(st, anim) {
+    const H = st.heap, hb = $('hb');
+    $('hpempty').style.opacity = H ? 0 : 1;
+    $('hpempty').textContent = st.heapNote || 'leer';
+    if (!H) { hb.className = 'hb hide'; return; }
+    const before = $('hcells').dataset.cells || '';
+    const cells = H.cells;
+    const key = cells.join('|');
+    if (key !== before) {
+      const prev = before ? before.split('|') : [];
+      $('hcells').innerHTML = cells.map((c, i) => '<div class="hc' + (c === '?' ? ' q' : '') + '"><span' + (anim && prev.length === cells.length && prev[i] !== c ? ' class="new" style="transition-delay:' + (0.15 + i * 0.18) + 's"' : '') + '>' + esc(c) + '</span></div>').join('');
+      $('hcells').dataset.cells = key;
+      if (anim) { void hb.offsetWidth; $('hcells').querySelectorAll('span.new').forEach(s => s.classList.remove('new')); }
+    }
+    hb.className = 'hb ' + (H.st || '');
+    hb.style.transitionDelay = anim && H.st === 'alloc' && hb.dataset.was !== '1' ? '0.2s' : '0s';
+    hb.dataset.was = '1';
+    $('hstat').textContent = H.label;
+    $('hstat').style.transitionDelay = anim ? (H.ld || 0) + 's' : '0s';
+  }
+
+  function drawArrows(st, anim) {
+    const g = $('arrg'), V = st.vars || [];
+    const want = {};
+    V.forEach((v, i) => {
+      if (!v.arrow) return;
+      const y1 = cardTop(i, V) + 16, x1 = 736, x2 = 778, y2 = 70 + 20 + 22;
+      want[v.n] = { d: 'M' + x1 + ' ' + y1 + ' C ' + (x1 + 34) + ' ' + y1 + ', ' + (x2 - 30) + ' ' + y2 + ', ' + x2 + ' ' + y2, cls: v.arrow, delay: v.ad || 0 };
+    });
+    [...g.children].forEach(p => { if (!want[p.dataset.n]) p.remove(); });
+    Object.entries(want).forEach(([n, a]) => {
+      let p = g.querySelector('[data-n="' + n + '"]'), fresh = false;
+      if (!p) { p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.dataset.n = n; g.appendChild(p); fresh = true; p.style.strokeDashoffset = 160; }
+      p.setAttribute('d', a.d); p.setAttribute('class', 'ln ' + a.cls);
+      p.setAttribute('marker-end', 'url(#mk-' + a.cls + ')');
+      p.style.strokeDasharray = a.cls === 'bad' ? '7 6' : '160';
+      if (fresh && anim) { p.style.strokeDasharray = '160'; void p.getBoundingClientRect(); p.style.transitionDelay = (a.delay + 0.3) + 's'; p.style.strokeDashoffset = 0; }
+      else { p.style.transitionDelay = '0s'; p.style.strokeDashoffset = 0; }
+    });
+  }
+
+  function draw(st, anim) {
+    stage.classList.toggle('noanim', !anim);
+    $('book').classList.toggle('off', !st.book);
+    $('fin').classList.toggle('off', !st.fin);
+    [...$('fin').querySelectorAll('.fq')].forEach((e, i) => { e.classList.toggle('on', !!st.fq); e.style.transitionDelay = anim && st.fq && !st._pfq ? (0.2 + i * 0.4) + 's' : '0s'; });
+    $('frame').innerHTML = 'Rahmen von <b>' + st.frame + '</b>';
+    drawCode(st, anim); drawTerm(st, anim); drawVars(st, anim); drawHeap(st, anim); drawArrows(st, anim);
+    if (!anim) { void stage.offsetWidth; stage.classList.remove('noanim'); }
+  }
+  function reset() { $('code').classList.remove('fade'); codeKey = null; termShown = []; $('tlines').innerHTML = ''; $('vars').innerHTML = ''; varEls = {}; $('arrg').innerHTML = ''; $('hcells').innerHTML = ''; $('hcells').dataset.cells = ''; $('hb').dataset.was = ''; }
+
+  /* ---------- Szenen ---------- */
+  const Q6 = ['?', '?', '?', '?', '?', '?'], HALLO0 = ['H', 'a', 'l', 'l', 'o', '\\0'], HALLO = ['H', 'a', 'l', 'l', 'o'];
+  const PA = { n: 'a', t: 'char *', f: [['', '0x5000']], arrow: 'ok' };
+  const PB = { n: 'b', t: 'char *', f: [['', '0x5000']], arrow: 'ok', from: 'a', ad: 0.8 };
+  const GCC = [['gcc double_free.c -o double_free', 'cmd'], ['(kein Fehler, keine Warnung)', 'dim']];
+  const SA = { n: 'a', t: 'String', f: STR('0x5000', 5, 5), arrow: 'ok' };
+  const SB = { n: 'b', t: 'String', f: STR('0x5000', 5, 5), arrow: 'ok', from: 'a', ad: 0.8 };
+  const SAm = { ...SA, arrow: null, moved: true };
+  const MA = (d, x) => ({ n: 'a', t: 'MyStruct', f: [['data', d]], ...x });
+  const IA = (d, x) => ({ n: 'a', t: 'i32', f: [['', d]], ...x });
+  const E0382 = [['cargo run', 'cmd'], ['error[E0382]: borrow of moved value: `a`', 'err'], ['8 |     let b = a;', 'err'], ['  |             - value moved here', 'err'], ['9 |     println!("Struct a: {:?}, Struct b: {:?}", a, b);', 'err']];
+  const OUT4 = [['cargo run', 'cmd'], ['a: 42, b: 42', 'ok'], ['a: 123, b: 42', 'ok'], ['Struct a: MyStruct { data: 42 }, Struct b: MyStruct { data: 42 }', 'ok'], ['Struct a: MyStruct { data: 123 }, Struct b: MyStruct { data: 42 }', 'ok']];
+
+  const S = [
+    { dot: 'C', act: 'Vorweg · C', title: 'Double Free in C', st0: { code: 'c', line: 0, frame: 'main', vars: [], heap: null, term: [], book: 1 }, beats: [
+      { say: 'Vorweg ein Tipp: Das offizielle Rust-Buch ist kostenlos, sehr gut lesbar und erklärt alles mit Beispielen. Wer Rust lernen oder von C umsteigen will, fängt am besten hier an.', title: 'Zum Weiterlernen: das Rust-Buch' },
+      { say: 'Bevor wir Aufgabe 2 lösen: Warum ist Rust beim Kopieren so streng? Dazu ein typischer Fehler in C. Rechts siehst du den Speicher: den <b>Stack</b> für lokale Variablen und den <b>Heap</b> für <code>malloc</code>.', set: { book: 0 }, with: true },
+      { say: '<code>malloc(6)</code> holt 6 Byte auf dem Heap, hier ab Adresse 0x5000. <code>a</code> liegt auf dem Stack und speichert nur diese <b>Adresse</b>. Der Inhalt ist noch zufällig.', set: { line: 5, vars: [PA], heap: { st: 'alloc', cells: Q6, label: 'belegt' } } },
+      { say: '<code>strcpy</code> schreibt „Hallo“ hinein, mit <code>\\0</code> am Ende. Daran erkennt C, wo ein Text aufhört.', set: { line: 6, heap: { st: 'alloc', cells: HALLO0, label: 'belegt' } } },
+      { say: '<code>char *b = a</code> kopiert nur die Adresse. Jetzt zeigen <b>zwei</b> Zeiger auf denselben Speicher. Wer gibt ihn frei, a oder b? C merkt sich das nicht.', set: { line: 7, vars: [PA, PB] } },
+      { say: '<code>free(a)</code> gibt den Block zurück. a und b enthalten aber immer noch 0x5000. Solche Zeiger heißen <b>hängende Zeiger</b> (dangling pointer).', set: { line: 8, vars: [{ ...PA, arrow: 'bad' }, { ...PB, arrow: 'bad' }], heap: { st: 'free', cells: HALLO0, label: 'freigegeben' } } },
+      { say: '<code>free(b)</code> gibt <b>denselben</b> Block ein zweites Mal frei: ein <b>Double Free</b>. Das Programm wird abgebrochen. gcc hat beim Kompilieren nichts gemerkt.', set: { line: 9, lerr: 1, heap: { st: 'boom', cells: HALLO0, label: 'zweimal freigegeben', ld: 0.2 }, tt: 'TERMINAL · LINUX', term: [...GCC, ['./double_free', 'cmd'], ['free(): double free detected in tcache 2', 'err'], ['Aborted (core dumped)', 'err']] }, ms: 2400 },
+      { say: 'Manchmal stürzt so ein Programm nicht einmal ab, sondern zerstört still fremde Daten. Das ist eine klassische <b>Sicherheitslücke</b>. Aufpassen muss allein der Programmierer.' }
+    ] },
+    { dot: 'R', act: 'Vorweg · Rust', title: 'Rust: genau ein Besitzer', st0: { code: 'rs', line: 0, frame: 'main', vars: [], heap: null, term: [] }, beats: [
+      { say: 'Dasselbe in Rust. Ein <code>String</code> besteht auf dem Stack aus drei Werten: Zeiger, Länge und Kapazität. Der Text selbst liegt auf dem Heap. <b>Besitzer</b> des Textes ist a.', set: { line: 2, vars: [SA], heap: { st: 'alloc', cells: HALLO, label: 'Besitzer: a' } } },
+      { say: '<code>let b = a</code> kopiert die drei Werte, genau wie in C. Aber der Compiler merkt sich: <b>a ist ab jetzt ungültig</b>, Besitzer ist nur noch b. Das nennt man <b>Move</b>.', set: { line: 3, vars: [SAm, SB], heap: { st: 'alloc', cells: HALLO, label: 'Besitzer: b', ld: 0.9 } }, ms: 2200 },
+      { say: 'Was, wenn wir wie in C trotzdem a freigeben? <code>drop(a)</code> ist in Rust das Gleiche wie <code>free(a)</code>. Der Compiler bricht ab, das Programm wird gar nicht erst gebaut.', set: { code: 'rsbad', line: 4, lerr: 1, term: [['cargo run', 'cmd'], ['error[E0382]: use of moved value: `a`', 'err'], ['3 |     let b = a;', 'err'], ['  |             - value moved here', 'err'], ['4 |     drop(a);      // wie free(a)', 'err']] }, ms: 2200 },
+      { say: 'Mit dem richtigen Code klappt es. An der schließenden Klammer gibt Rust den Text <b>automatisch</b> frei, genau einmal, über den Besitzer b. Ein Double Free ist so unmöglich.', set: { code: 'rs', line: 5, lerr: 0, vars: [SAm, { ...SB, arrow: null, gone: true, md: 0.4 }], heap: { st: 'free', cells: HALLO, label: 'frei, genau einmal', ld: 0.4 }, term: [['cargo run', 'cmd'], ['Hallo', 'ok']] }, ms: 2000 },
+      { say: 'Wichtig: Ein Move kostet zur Laufzeit nichts extra. Im Maschinencode ist er dieselbe Byte-Kopie wie in C. Die ganze Prüfung macht der Compiler <b>vor</b> dem Start.' }
+    ] },
+    { dot: 'a', act: 'Aufgabe 2 a)', title: 'a) Welcher Compilerfehler?', st0: { code: 'st', line: 0, frame: 'func_struct', vars: [], heap: null, heapNote: 'nicht benutzt', term: [] }, beats: [
+      { say: 'Jetzt Aufgabe 2. <code>MyStruct</code> enthält nur eine Zahl, <code>data</code>. Ein <code>i64</code> ist 8 Byte groß. Das ganze Struct liegt also auf dem Stack, der Heap bleibt leer.', set: { line: 7, vars: [MA(42)] } },
+      { say: '<code>let b = a</code>: MyStruct hat den Trait <code>Copy</code> nicht. Also wird a nach b <b>verschoben</b>, genau wie beim String eben. a ist danach ungültig.', set: { line: 8, vars: [MA(42, { moved: true }), MA(42, { n: 'b', from: 'a' })] }, ms: 2200 },
+      { say: 'Das <code>println!</code> will a noch lesen. Genau das meldet der Compiler: <b>E0382, borrow of moved value</b>. „Borrow“ heißt ausleihen: <code>println!</code> leiht sich a zum Lesen aus.', set: { line: 9, lerr: 1, term: E0382 }, ms: 2200 },
+      { say: '<b>Antwort a):</b> MyStruct implementiert <code>Copy</code> nicht. Deshalb wird a bei <code>let b = a</code> nach b verschoben und ist danach ungültig. Das <code>println!</code> greift trotzdem auf a zu.' }
+    ] },
+    { dot: 'b', act: 'Aufgabe 2 b)', title: 'b) Warum nicht bei func_int()?', st0: { code: 'int', line: 0, frame: 'func_int', vars: [], heap: null, heapNote: 'nicht benutzt', term: [] }, beats: [
+      { say: '<code>func_int</code> macht genau dasselbe, nur mit einer Zahl. <code>a = 42</code> liegt auf dem Stack. Ohne Typangabe ist eine Ganzzahl in Rust ein <code>i32</code>.', set: { line: 2, vars: [IA(42)] } },
+      { say: '<code>let b = a</code>: Ganzzahlen haben den <b>Copy-Trait</b>. b bekommt eine eigene Kopie, und a <b>bleibt gültig</b>.', set: { line: 3, vars: [IA(42), IA(42, { n: 'b', from: 'a' })] } },
+      { say: '<code>a = 123</code> ändert nur a. b ist eine eigene Kopie und bleibt 42. Die Ausgabe zeigt es.', set: { line: 5, vars: [IA(123), IA(42, { n: 'b' })], term: [['cargo run', 'cmd'], ['a: 42, b: 42', 'ok'], ['a: 123, b: 42', 'ok']] } },
+      { say: '<b>Antwort b):</b> Ganzzahlen implementieren <code>Copy</code>. Ein <b>Trait</b> ist eine Fähigkeit eines Typs. Copy heißt: Bei <code>=</code> werden die Bytes kopiert, und das Original bleibt gültig.' },
+      { say: 'Warum hat eine Zahl <code>Copy</code>, ein <code>String</code> aber nicht? Eine Zahl liegt komplett auf dem Stack. Eine Kopie ist einfach eine zweite, unabhängige Zahl. Das ist billig und sicher.', title: 'Copy oder Move?' },
+      { say: 'Ein <code>String</code> verwaltet seinen Text über einen <b>Zeiger auf den Heap</b>. Eine Byte-Kopie hieße: zwei Zeiger, ein Text, am Ende zweimal freigegeben. Deshalb hat <code>String</code> kein <code>Copy</code> und wird verschoben.', title: 'Copy oder Move?' },
+      { say: 'Einen Move-Trait gibt es übrigens nicht. <b>Verschieben ist das Normalverhalten</b> in Rust. <code>Copy</code> ist die Ausnahme, die ein Typ ausdrücklich haben muss.', title: 'Copy oder Move?' }
+    ] },
+    { dot: 'c', act: 'Aufgabe 2 c)', title: 'c) Code reparieren', st0: { code: 'st', line: 0, frame: 'func_struct', vars: [], heap: null, heapNote: 'nicht benutzt', term: [] }, beats: [
+      { say: 'Wie bringen wir <code>func_struct</code> zum Laufen? Wir machen <b>ausdrücklich eine Kopie</b>: <code>a.clone()</code> erzeugt ein zweites, eigenes MyStruct.' },
+      { say: 'Zwei Änderungen: <code>let b = a.clone();</code> macht die Kopie. Damit MyStruct das kann, schreiben wir oben <code>Clone</code> dazu. <b>derive</b> heißt: Rust schreibt den Code dafür automatisch.', set: { code: 'fix', chg: [1, 8], line: 8 } },
+      { say: 'Jetzt wird nichts verschoben. b bekommt eine eigene Kopie, und a bleibt gültig.', set: { chg: [], vars: [MA(42), MA(42, { n: 'b', from: 'a' })] } },
+      { say: '<code>a.data = 123</code> ändert nur a. Das ganze Programm läuft jetzt durch. Das ist die echte Ausgabe.', set: { line: 10, vars: [MA(123), MA(42, { n: 'b' })], term: OUT4 }, ms: 2200 },
+      { say: '<b>Merke:</b> Wo kein <code>Copy</code> ist, wird verschoben. Wer trotzdem eine Kopie will, ruft <code>.clone()</code> auf, ausdrücklich und genau an dieser Stelle.' }
+    ] },
+    { dot: 'B', act: 'Zum Weiterlernen', title: 'Zum Weiterlernen: das Rust-Buch', st0: { code: 'fix', line: 0, frame: 'func_struct', vars: [], heap: null, heapNote: 'nicht benutzt', term: [], fin: 1, fq: 1 }, beats: [
+      { say: 'Lies das offizielle Rust-Buch unbedingt: kostenlos, sehr angenehm zu lesen, alles Schritt für Schritt erklärt. Für Aufgabe 2 ist Kapitel 4 am wichtigsten: Wer es in Ruhe liest, versteht den Borrow Checker viel besser.' }
+    ] }
+  ];
+
+  function expand(sc) {
+    const steps = []; let st = { ...sc.st0 };
+    sc.beats.forEach(b => {
+      const t = b.title || sc.title;
+      if (b.set) {
+        if (!b.with) steps.push({ say: b.say, title: t, st: { ...st } });
+        const nx = { ...st, ...b.set };
+        steps.push({ say: b.say, title: t, st: nx, play: true, with: !!b.with, ms: b.ms });
+        st = nx;
+      } else steps.push({ say: b.say, title: t, st: { ...st } });
+    });
+    return steps;
+  }
+
+  /* ---------- Schritt-Engine (wie KGÜ 5) ---------- */
+  let timers = [], busy = false, target = null;
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const stop = () => { timers.forEach(clearTimeout); timers = []; };
+  let cur = 0, k = 0, steps = [], scene = null;
+  const dots = $('dots');
+  S.forEach((s, i) => { const d = document.createElement('button'); d.className = 'dot'; d.textContent = s.dot; d.title = s.title; d.onclick = () => show(i); dots.appendChild(d); });
+  const endPlay = () => { busy = false; ui(); };
+  function hard(st) { reset(); draw(st, false); }
+  function finish() { stop(); busy = false; hard(target); ui(); }
+  function play(st, ms) { busy = true; target = st; ui(); draw(st, true); later(ms || 1800, endPlay); }
+  function ui() {
+    const nx = steps[k + 1];
+    const isPlay = nx && nx.play && !nx.with;
+    $('next').textContent = busy ? 'läuft …' : isPlay ? 'Zeigen →' : 'Weiter →';
+    $('next').classList.toggle('play', !busy && !!isPlay);
+    $('next').disabled = !busy && !nx && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && k === 0;
+    $('cnt').textContent = 'Schritt ' + (k + 1) + ' / ' + steps.length;
+    $('again').disabled = !busy && lastPlay() < 0;
+  }
+  function go(j, anim) {
+    const s = steps[j]; k = j;
+    $('say').innerHTML = s.say; $('ttl').textContent = s.title;
+    stop(); busy = false; target = s.st;
+    if (anim && s.play) play(s.st, s.ms); else hard(s.st);
+    ui();
+  }
+  function show(i, last) {
+    stop(); busy = false; cur = i; scene = S[i]; steps = expand(scene);
+    $('act').textContent = scene.act;
+    [...dots.children].forEach((d, n) => { if (n === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    k = 0; go(last ? steps.length - 1 : 0, false);
+  }
+  function lastPlay() { for (let j = k; j >= 0; j--) if (steps[j].play) return j; return -1; }
+  function again() {
+    const j = lastPlay(); if (j < 0) return;
+    stop(); busy = false;
+    const before = j > 0 ? steps[j - 1].st : scene.st0;
+    hard(before);
+    void stage.offsetWidth;
+    play(steps[j].st, steps[j].ms);
+  }
+  function next() {
+    if (busy) return finish();
+    if (k < steps.length - 1) go(k + 1, true); else if (cur < S.length - 1) show(cur + 1);
+  }
+  function prev() {
+    if (busy) finish();
+    if (k > 0) go(k - 1, false); else if (cur > 0) show(cur - 1, true);
+  }
+  $('again').onclick = again; $('next').onclick = next; $('prev').onclick = prev; $('replay').onclick = () => show(cur);
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'w' || e.key === 'W') again();
+    else if (e.key === 'r' || e.key === 'R') show(cur);
+  });
+
+  function fit() {
+    const w = box.clientWidth, s = Math.max(0.5, Math.min(w / 1000, (window.innerHeight - 250) / 380, 1.6));
+    stage.style.transform = 'scale(' + s + ')'; stage.style.left = (w - 1000 * s) / 2 + 'px'; box.style.height = 380 * s + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.__go = (i, j) => { show(i); if (j) go(Math.min(j, steps.length - 1), false); };
+  fit(); show(0);
+})();
+</script>
+</body>
+</html>

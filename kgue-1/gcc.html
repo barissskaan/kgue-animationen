@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGÜ 1 · gcc-Überblick</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Akt 2 des KGÜ-1-Films, einfache Fassung: nur der Überblick.
+   Regel: Jede Szene zeigt ihr ganzes Bild sofort. Leere Plätze sind gestrichelt.
+   Ein Klick füllt sie oder bewegt etwas. Es springt kein neues Fenster auf. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f1f2f5;
+  --warn: #c2410c; --warnbg: #fde6da; --hl: #fff1a8; --ptr: #ffd400; --new: #4d7c0f;
+  --code: #1d2026; --cfg: #e6e6e6; --ckw: #6ea8ff; --cstr: #9be15d; --ccom: #8a909c; --cpre: #f0a35e; --bits: #9aa3b2;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 10px 16px 10px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 24px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.top .act { color: var(--fg); }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 0 0; overflow: hidden; }
+.stage.noanim, .stage.noanim * { transition: none !important; animation: none !important; }
+.mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+
+/* Fabrik-Leiste */
+#bar { position: absolute; left: 6px; top: 4px; width: 988px; height: 62px; display: flex; align-items: center; gap: 4px; }
+.st { flex: 1; height: 58px; border: 2px solid var(--line); border-radius: 10px; padding: 4px 8px; display: flex; flex-direction: column; justify-content: center; transition: background 0.35s, border-color 0.35s, box-shadow 0.35s; }
+.st b { font-size: 15px; line-height: 1.15; white-space: nowrap; }
+.st code { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.st.done { background: var(--soft); }
+.st.done b::after { content: ""; display: inline-block; width: 9px; height: 5px; border-left: 2.5px solid var(--new); border-bottom: 2.5px solid var(--new); transform: rotate(-45deg) translate(2px, -3px); margin-left: 8px; }
+.st.cur { background: var(--hl); border-color: var(--fg); box-shadow: 0 3px 0 var(--fg); }
+.st.tour { animation: tour 0.8s ease-in-out; }
+@keyframes tour { 40% { background: var(--ptr); border-color: var(--fg); transform: translateY(-3px); } }
+.gt { flex: none; width: 12px; height: 12px; border-top: 2.5px solid var(--muted); border-right: 2.5px solid var(--muted); transform: rotate(45deg); margin: 0 2px; }
+
+/* Szenen */
+.pn { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; opacity: 0; pointer-events: none; transition: opacity 0.35s; }
+.pn.on { opacity: 1; pointer-events: auto; }
+
+/* Karten */
+.card { position: absolute; background: var(--code); border: 2.5px solid var(--fg); border-radius: 10px; overflow: hidden; color: var(--cfg);
+  transition: background 0.45s, border-color 0.45s, transform 0.9s cubic-bezier(.45,0,.25,1), opacity 0.45s, box-shadow 0.45s; }
+.card .hd { height: 26px; line-height: 26px; padding: 0 12px; background: #2a2e36; color: #fff; font-family: var(--font-mono); font-size: 14px; font-weight: 600; display: flex; justify-content: space-between; gap: 10px; transition: background 0.45s, color 0.45s; white-space: nowrap; }
+.card .hd span { color: #aeb5c4; font-family: var(--font-body); font-weight: 400; font-size: 13px; transition: opacity 0.4s; }
+.card .bd { padding: 6px 12px; font-family: var(--font-mono); font-variant-ligatures: none; font-size: 15px; line-height: 21px; transition: opacity 0.4s; }
+.card .ln { white-space: pre; height: 21px; border-radius: 3px; position: relative; transition: background 0.35s, opacity 0.4s, height 0.45s; }
+.card.lt { background: #fff; color: var(--fg); }
+.card.lt .hd { background: var(--soft); color: var(--fg); border-bottom: 1.5px solid var(--line); }
+.card.lt .hd span { color: var(--muted); }
+.k { color: var(--ckw); } .s { color: var(--cstr); } .c { color: var(--ccom); font-style: italic; } .p { color: var(--cpre); } .b { color: var(--bits); }
+.card.lt .k { color: #1d4ed8; } .card.lt .s { color: #3f6d12; } .card.lt .p { color: #b45309; }
+.hlx { background: rgba(255, 212, 0, 0.30); box-shadow: 0 0 0 2px var(--ptr); }
+
+/* leerer Platz: gestrichelt, Inhalt unsichtbar */
+.card.ph { background: transparent; border-style: dashed; border-color: var(--line); }
+.card.ph .hd { background: transparent; color: #a3a9b5; }
+.card.ph .hd span { opacity: 0; }
+.card.ph .bd { opacity: 0; }
+
+/* Präprozessor: Zeile wird ersetzt */
+.mor .old, .mor .new { transition: opacity 0.3s; }
+.mor .new { position: absolute; left: 0; top: 0; opacity: 0; }
+.mor.done .old { opacity: 0; }
+.mor.done .new { opacity: 1; }
+.mor.done { background: rgba(155, 225, 93, 0.16); }
+.ln.col { height: 0 !important; opacity: 0; }
+.ghost { position: absolute; z-index: 5; height: 21px; padding: 0 5px; margin-left: -5px; background: var(--ptr); color: var(--fg); border-radius: 4px; font-family: var(--font-mono); font-variant-ligatures: none; font-size: 15px; line-height: 21px; white-space: pre; opacity: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.25); }
+.ghost.fly { animation: fly 1.1s ease-in-out both; }
+@keyframes fly { 0% { opacity: 0; transform: none; } 12% { opacity: 1; transform: none; } 82% { opacity: 1; transform: translate(var(--dx), var(--dy)); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
+
+/* stdio.h ist riesig */
+.card.stack { box-shadow: 6px 6px 0 -2.5px #fff, 6px 6px 0 0 var(--fg), 12px 12px 0 -2.5px #fff, 12px 12px 0 0 var(--fg); }
+.card .ln.fa { opacity: 0.4; }
+.card .bd.fade { -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
+.ghost.big { box-shadow: 4px 4px 0 -1px #e2bd00, 8px 8px 0 -2px #b39400, 0 6px 12px rgba(0,0,0,0.3); }
+.mor .new.fold { background: rgba(255, 212, 0, 0.92); color: var(--fg); padding: 0 8px; border-radius: 4px; font-weight: 600; }
+.fold::before { content: ""; display: inline-block; width: 13px; height: 2.5px; background: var(--fg); box-shadow: 0 4.5px 0 var(--fg), 0 9px 0 var(--fg); margin-right: 8px; position: relative; top: -5px; }
+.tape { position: absolute; left: 0; top: 0; right: 0; opacity: 0; color: #c9b45a; transition: opacity 0.3s; }
+.tape div { height: 21px; white-space: pre; }
+#p1i1 { transition: background 0.35s, opacity 0.4s, height 0.6s ease-in-out; }
+#p1i1.unf { height: 966px; background: rgba(255, 212, 0, 0.10); }
+#p1i1.unf .new { opacity: 0; }
+#p1i1.unf .tape { opacity: 1; }
+#p1 .card .hd { position: relative; z-index: 2; }
+#p1bd { transition: transform 2.8s cubic-bezier(.55,0,.3,1); }
+.sbar { position: absolute; right: 4px; top: 31px; bottom: 5px; width: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); }
+.sbar i { position: absolute; left: 0; right: 0; top: 0; height: 100%; border-radius: 3px; background: rgba(255,255,255,0.22); transition: top 2.8s cubic-bezier(.55,0,.3,1), height 0.6s; }
+.pill { position: absolute; z-index: 3; font-family: var(--font-body); font-size: 13px; font-weight: 600; border-radius: 999px; padding: 1px 10px; background: var(--ptr); color: var(--fg); opacity: 0; transition: opacity 0.4s; }
+
+/* Compiler: Detail-Ansicht und Überblick */
+.layer { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 50% 20%; transition: opacity 0.5s, transform 0.6s ease-in-out; }
+#p2ov { opacity: 0; }
+#p2ov.in { opacity: 1; }
+#p2det.out { opacity: 0; transform: scale(0.9); }
+.lab.sm { font-size: 15px; }
+
+.hw { border-radius: 3px; transition: background 0.4s, box-shadow 0.4s; }
+#p2det.match .hw, #p2det.match .p2c { background: rgba(255, 212, 0, 0.30); box-shadow: 0 0 0 2px var(--ptr); }
+.p2c { transition: background 0.4s, box-shadow 0.4s; }
+.warnbox { position: absolute; left: 404px; top: 346px; width: 586px; height: 32px; line-height: 28px; padding: 0 12px; border: 2px solid var(--fg); border-radius: 8px; background: var(--hl); font-size: 15px; white-space: nowrap; opacity: 0; transition: opacity 0.45s; }
+.warnbox .mono { font-size: 14px; }
+.from { display: flex; gap: 6px; align-items: center; margin-top: 8px; font-family: var(--font-body); font-size: 13px; color: #aeb5c4; }
+.from i { font-style: normal; font-family: var(--font-mono); font-size: 12px; color: #fff; border: 1.5px solid #5d6370; border-radius: 5px; padding: 0 5px; line-height: 20px; }
+
+/* Schildchen in Codezeilen */
+.tag { position: absolute; right: 2px; top: 2px; font-family: var(--font-body); font-size: 12px; font-weight: 600; border-radius: 999px; padding: 0 8px; line-height: 17px; background: var(--warn); color: #fff; opacity: 0; transition: opacity 0.4s; }
+.note { position: absolute; right: 2px; top: 0; font-family: var(--font-body); font-size: 13px; color: #ff8f70; font-style: italic; opacity: 0; transition: opacity 0.4s; }
+
+/* Lücken im Maschinencode */
+.hole { display: inline-block; font-size: 13.5px; line-height: 16px; padding: 0 6px; border: 1.5px dashed #ff8f70; color: #ff8f70; border-radius: 4px; font-weight: 600; vertical-align: 1px; transition: background 0.4s, color 0.4s, border-color 0.4s; }
+.hole::after { content: " ?"; }
+.pulse .hole:not(.fill) { animation: gp 1.1s ease-in-out infinite; }
+@keyframes gp { 50% { background: rgba(255, 143, 112, 0.35); } }
+.hole.fill { border-style: solid; border-color: #9be15d; color: #9be15d; background: rgba(155, 225, 93, 0.2); }
+.hole.fill::after { content: ""; }
+
+/* schmale Bausteine (Linker) */
+.card.slim { height: 36px; }
+.card.slim .hd { height: 31px; line-height: 31px; border: 0; }
+.card.slim .hd span { font-family: var(--font-mono); font-size: 13.5px; color: var(--bits); }
+.card.lt.slim .hd span { font-family: var(--font-body); color: var(--muted); }
+.card.glow { box-shadow: 0 0 0 4px #9be15d; }
+.card.miss { opacity: 0.18; border-style: dashed; }
+
+/* Rahmen für exec */
+.frame { position: absolute; border: 2.5px solid var(--fg); border-radius: 12px; background: #f6f7f9; transition: border-color 0.45s, background 0.45s; }
+.frame .fh { height: 28px; line-height: 28px; padding: 0 12px; font-family: var(--font-mono); font-weight: 600; font-size: 15px; display: flex; justify-content: space-between; }
+.frame .fh span { font-family: var(--font-body); font-weight: 400; font-size: 13px; color: var(--muted); }
+.frame.ph { border-style: dashed; border-color: var(--line); background: transparent; }
+.frame.ph .fh { color: #a3a9b5; }
+.frame.bad { border-color: var(--warn); background: var(--warnbg); }
+.errm { position: absolute; left: 14px; right: 14px; top: 70px; font-size: 16px; line-height: 1.35; opacity: 0; transition: opacity 0.4s; }
+.errm b { color: var(--warn); }
+
+/* kleine Datei-Chips (Compiler-Spuren) */
+.lane { position: absolute; display: flex; align-items: center; gap: 8px; }
+.chip { display: inline-block; height: 32px; line-height: 28px; padding: 0 12px; border: 2px solid var(--fg); border-radius: 7px; font-family: var(--font-mono); font-size: 15px; font-weight: 600; background: #fff; transition: background 0.45s, border-color 0.45s, color 0.45s; }
+.chip.dk { background: var(--code); color: #fff; }
+.chip.dk.ph { background: transparent; color: #a3a9b5; border-style: dashed; border-color: var(--line); }
+.ga { width: 22px; height: 3px; background: var(--fg); position: relative; flex: none; }
+.ga::after { content: ""; position: absolute; right: -2px; top: -4px; border: 5.5px solid transparent; border-left: 7px solid var(--fg); border-right: 0; }
+
+/* Beschriftung der Maschinen */
+.lab { position: absolute; text-align: center; font-weight: 600; font-size: 16px; }
+.lab small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); line-height: 1.2; }
+
+/* Ziel-Leiste (Szene 0) */
+.goal { position: absolute; display: flex; align-items: center; gap: 8px; border: 2.5px solid var(--fg); border-radius: 10px; padding: 4px 12px; background: #fff; transition: box-shadow 0.4s, background 0.4s; }
+.goal.hl { box-shadow: 0 0 0 4px var(--ptr); background: #fffbe0; }
+.gf { display: flex; flex-direction: column; border: 2px solid var(--fg); border-radius: 6px; padding: 1px 8px; background: #fff; line-height: 1.15; flex: none; }
+.gf b { font-size: 13px; } .gf i { font-style: normal; font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.gf.gb { background: var(--code); color: #fff; } .gf.gb i { color: #9be15d; }
+.gtx { font-size: 15px; line-height: 1.28; margin-left: 8px; }
+
+/* CPU */
+.cpu .core { transition: fill 0.3s; }
+.cpu.run .core { animation: cpu 0.5s ease-in-out infinite alternate; }
+@keyframes cpu { to { fill: #5a4a00; } }
+
+/* Terminal (Szene 5) */
+#p5t .tl { white-space: pre; height: 30px; }
+.pr { color: #8ae234; font-weight: 600; }
+.cu { display: inline-block; width: 9px; height: 17px; background: var(--cfg); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Befehlszeile (Szenen 1 bis 4) */
+#cmd { position: absolute; left: 10px; top: 344px; height: 32px; min-width: 380px; background: var(--code); color: var(--cfg); border: 2px solid var(--fg); border-radius: 8px; padding: 0 12px; font-family: var(--font-mono); font-variant-ligatures: none; font-size: 15px; line-height: 28px; white-space: pre; opacity: 0; transition: opacity 0.3s, border-color 0.3s; }
+#cmd.on { opacity: 1; }
+#cmd.err { border-color: var(--warn); box-shadow: 0 0 0 2px var(--warn); }
+
+/* Pfeile */
+svg.ov { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; pointer-events: none; overflow: visible; }
+svg.ov > path { fill: none; stroke-width: 3; stroke-linecap: round; }
+.draw { stroke-dasharray: var(--L); stroke-dashoffset: var(--L); transition: stroke-dashoffset 0.6s ease-in-out; }
+.drawn { stroke-dashoffset: 0; }
+path.flow { stroke-dasharray: 9 7; animation: flow 0.5s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -16; } }
+
+/* Text und Bedienung */
+.cap { margin-top: 8px; min-height: 118px; }
+.cap h1 { font-size: 24px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.cap p { margin: 0; font-size: 21px; line-height: 1.35; max-width: 86ch; }
+.cap code { font-family: var(--font-mono); font-variant-ligatures: none; font-size: 0.9em; background: var(--soft); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot { width: 30px; height: 30px; padding: 0; border-radius: 50%; border-color: var(--line); font-family: var(--font-mono); font-size: 14px; }
+.dot[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#next { min-width: 170px; background: var(--fg); color: var(--bg); margin-left: auto; }
+#next.play { background: var(--ptr); color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="act" id="act"></span><span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+      <div id="bar">
+        <div class="st" data-i="0"><b>Quelltext</b><code>main.c add.c mul.c</code></div><i class="gt"></i>
+        <div class="st" data-i="1"><b>1 Präprozessor</b><code>gcc -E</code></div><i class="gt"></i>
+        <div class="st" data-i="2"><b>2 Compiler</b><code>gcc -S → .s</code></div><i class="gt"></i>
+        <div class="st" data-i="3"><b>3 Assembler</b><code>gcc -c → .o</code></div><i class="gt"></i>
+        <div class="st" data-i="4"><b>4 Linker</b><code>-o exec</code></div><i class="gt"></i>
+        <div class="st" data-i="5"><b>Ausführen</b><code>./exec</code></div>
+      </div>
+
+      <!-- 0 · Quelltext -->
+      <div class="pn" id="p0">
+        <div class="card" style="left:10px;top:80px;width:360px;height:232px"><div class="hd">main.c</div><div class="bd">
+          <div class="ln"><span class="p">#include</span> &lt;stdio.h&gt;</div>
+          <div class="ln" id="p0a"><span class="p">#include</span> <span class="s">"add.h"</span></div>
+          <div class="ln" id="p0m"><span class="p">#include</span> <span class="s">"mul.h"</span></div>
+          <div class="ln"> </div>
+          <div class="ln"><span class="k">int</span> main(<span class="k">void</span>) {</div>
+          <div class="ln">  printf(<span class="s">"3 + 4 = %d\n"</span>, add(3, 4));</div>
+          <div class="ln">  printf(<span class="s">"3 * 4 = %d\n"</span>, mul(3, 4));</div>
+          <div class="ln">  <span class="k">return</span> 0;</div>
+          <div class="ln">}</div></div></div>
+        <div class="card lt" style="left:420px;top:80px;width:250px;height:64px"><div class="hd">add.h<span>Header</span></div><div class="bd"><div class="ln"><span class="k">int</span> add(<span class="k">int</span> a, <span class="k">int</span> b);</div></div></div>
+        <div class="card lt" style="left:420px;top:196px;width:250px;height:64px"><div class="hd">mul.h<span>Header</span></div><div class="bd"><div class="ln"><span class="k">int</span> mul(<span class="k">int</span> a, <span class="k">int</span> b);</div></div></div>
+        <div class="card" style="left:720px;top:80px;width:270px;height:106px"><div class="hd">add.c</div><div class="bd">
+          <div class="ln"><span class="p">#include</span> <span class="s">"add.h"</span></div>
+          <div class="ln"><span class="k">int</span> add(<span class="k">int</span> a, <span class="k">int</span> b) {</div>
+          <div class="ln">  <span class="k">return</span> a + b; }</div></div></div>
+        <div class="card" style="left:720px;top:196px;width:270px;height:106px"><div class="hd">mul.c</div><div class="bd">
+          <div class="ln"><span class="p">#include</span> <span class="s">"mul.h"</span></div>
+          <div class="ln"><span class="k">int</span> mul(<span class="k">int</span> a, <span class="k">int</span> b) {</div>
+          <div class="ln">  <span class="k">return</span> a * b; }</div></div></div>
+        <svg class="ov" id="p0svg"><defs><marker id="ah0" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#b45309"/></marker></defs>
+          <path class="draw" style="stroke:#b45309" marker-end="url(#ah0)" d="M180 146 C 300 146, 300 125, 412 125"/>
+          <path class="draw" style="stroke:#b45309" marker-end="url(#ah0)" d="M180 167 C 300 172, 300 241, 412 241"/>
+          <path class="draw" style="stroke:#b45309" marker-end="url(#ah0)" d="M714 125 C 700 125, 692 125, 678 125"/>
+          <path class="draw" style="stroke:#b45309" marker-end="url(#ah0)" d="M714 241 H 678"/>
+        </svg>
+        <div class="goal" id="p0goal" style="left:10px;top:322px;width:980px;height:54px">
+          <span class="gf"><b>5 Textdateien</b><i>int main(…</i></span><span class="ga"></span>
+          <b class="mono" style="font-size:15px">gcc</b><span class="ga"></span>
+          <span class="gf gb"><b>exec</b><i>01001000 10001001…</i></span><span class="ga"></span>
+          <svg viewBox="0 0 40 40" style="width:40px;height:40px;flex:none"><g fill="#8a909c"><rect x="10" y="1" width="3" height="6"/><rect x="18" y="1" width="3" height="6"/><rect x="26" y="1" width="3" height="6"/><rect x="10" y="33" width="3" height="6"/><rect x="18" y="33" width="3" height="6"/><rect x="26" y="33" width="3" height="6"/><rect x="1" y="10" width="6" height="3"/><rect x="1" y="18" width="6" height="3"/><rect x="1" y="26" width="6" height="3"/><rect x="33" y="10" width="6" height="3"/><rect x="33" y="18" width="6" height="3"/><rect x="33" y="26" width="6" height="3"/></g><rect x="6" y="6" width="28" height="28" rx="4" fill="#2b303b" stroke="#16181d" stroke-width="2"/><text x="20" y="24" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9" font-weight="600" fill="#ffd400">CPU</text></svg>
+          <div class="gtx"><b>Ziel:</b> eine <b>ausführbare Datei</b> aus Nullen und Einsen, mit Befehlen, die die <b>CPU</b> (das „Gehirn“ des Computers) direkt ausführen kann.</div>
+        </div>
+      </div>
+
+      <!-- 1 · Präprozessor -->
+      <div class="pn" id="p1">
+        <div class="card" style="left:10px;top:80px;width:430px;height:253px"><div class="hd">main.c<span id="p1n">10 Zeilen</span></div><div class="bd" id="p1bd">
+          <div class="ln" id="p1c"><span class="c">// Ein kleiner Rechner</span></div>
+          <div class="ln mor" id="p1i1"><span class="old"><span class="p">#include</span> &lt;stdio.h&gt;</span><span class="new fold">570 Zeilen aus stdio.h</span><div class="tape"><div>typedef signed char __int8_t;</div><div>typedef long long __int64_t;</div><div> char __mbstate8[128];</div><div>typedef int __darwin_wchar_t;</div><div>typedef long __darwin_time_t;</div><div>typedef __uint32_t __darwin_gid_t;</div><div>typedef __uint16_t __darwin_mode_t;</div><div>typedef __uint32_t __darwin_useconds_t;</div><div> struct __darwin_pthread_handler_rec *__n…</div><div> long __sig;</div><div>};</div><div> long __sig;</div><div>};</div><div> long __sig;</div><div>};</div><div>typedef struct _opaque_pthread_mutexattr_…</div><div>typedef int __darwin_wctrans_t;</div><div>typedef unsigned char u_int8_t;</div><div>typedef unsigned long uintptr_t;</div><div>typedef int64_t user_off_t;</div><div>int renameatx_np(int, const char *, int, …</div><div>};</div><div> short _flags;</div><div> int (* _Nullable _read) (void *, char *,…</div><div> unsigned char _ubuf[3];</div><div>extern FILE *__stdoutp __attribute__((__s…</div><div>int fflush(FILE *);</div><div>int fputc(int, FILE *);</div><div>int fseek(FILE *, long, int);</div><div>__attribute__((__deprecated__("This funct…</div><div>int rename (const char *__old, const char…</div><div>__attribute__((__deprecated__("This funct…</div><div>char * tmpnam(char *);</div><div>int vsprintf(char * restrict , const char…</div><div>int __srget(FILE *);</div><div>  return (__swbuf(_c, _p));</div><div>int getchar_unlocked(void);</div><div>__attribute__((__deprecated__("This funct…</div><div>int vfscanf(FILE * restrict __stream, con…</div><div>int vdprintf(int, const char * restrict, …</div><div>extern const char *const sys_errlist[];</div><div>int setlinebuf(FILE *);</div><div>     int (* _Nullable)(void *));</div><div>     const char * restrict, ...);</div><div>extern int __vsprintf_chk (char * restric…</div><div>     const char * restrict, va_list);</div></div></div>
+          <div class="ln mor" id="p1i2"><span class="old"><span class="p">#include</span> <span class="s">"add.h"</span></span><span class="new"><span class="k">int</span> add(<span class="k">int</span> a, <span class="k">int</span> b);</span></div>
+          <div class="ln mor" id="p1i3"><span class="old"><span class="p">#include</span> <span class="s">"mul.h"</span></span><span class="new"><span class="k">int</span> mul(<span class="k">int</span> a, <span class="k">int</span> b);</span></div>
+          <div class="ln"> </div>
+          <div class="ln"><span class="k">int</span> main(<span class="k">void</span>) {</div>
+          <div class="ln">  printf(<span class="s">"3 + 4 = %d\n"</span>, add(3, 4));</div>
+          <div class="ln">  printf(<span class="s">"3 * 4 = %d\n"</span>, mul(3, 4));</div>
+          <div class="ln">  <span class="k">return</span> 0;</div>
+          <div class="ln">}</div></div>
+          <div class="sbar"><i id="p1th"></i></div>
+          <span class="pill" id="p1up" style="right:18px;top:33px">darüber: 570 Zeilen aus stdio.h</span>
+          <span class="pill" id="p1our" style="right:18px;top:79px;background:#9be15d">unser Code</span></div>
+        <div class="card lt stack" style="left:600px;top:80px;width:368px;height:146px"><div class="hd">stdio.h<span>+ viele weitere Header</span></div><div class="bd fade">
+          <div class="ln fa"><span class="k">typedef</span> <span class="k">signed char</span> __int8_t;</div>
+          <div class="ln fa"><span class="k">typedef struct</span> __sFILE { … } FILE;</div>
+          <div class="ln"><span class="k">int</span> printf(<span class="k">const char</span> *, ...);</div>
+          <div class="ln fa"><span class="k">int</span> scanf(<span class="k">const char</span> *, ...);</div>
+          <div class="ln fa">FILE *fopen(<span class="k">const char</span> *, …);</div></div></div>
+        <div class="card lt" style="left:600px;top:244px;width:368px;height:62px"><div class="hd">add.h<span>Header</span></div><div class="bd"><div class="ln"><span class="k">int</span> add(<span class="k">int</span> a, <span class="k">int</span> b);</div></div></div>
+        <div class="card lt" style="left:600px;top:314px;width:368px;height:62px"><div class="hd">mul.h<span>Header</span></div><div class="bd"><div class="ln"><span class="k">int</span> mul(<span class="k">int</span> a, <span class="k">int</span> b);</div></div></div>
+        <div class="ghost big" style="left:614.5px;top:156.5px;--dx:-590px;--dy:-21px">int printf(…); + 570 Zeilen</div>
+        <div class="ghost" style="left:614.5px;top:278.5px;--dx:-590px;--dy:-122px">int add(int a, int b);</div>
+        <div class="ghost" style="left:614.5px;top:348.5px;--dx:-590px;--dy:-171px">int mul(int a, int b);</div>
+      </div>
+
+      <!-- 2 · Compiler -->
+      <div class="pn" id="p2">
+        <div class="layer" id="p2det">
+        <div class="card" style="left:10px;top:80px;width:400px;height:169px"><div class="hd">main.c<span>nach dem Präprozessor</span></div><div class="bd">
+          <div class="ln c">  …</div>
+          <div class="ln"><span class="k">int</span> main(<span class="k">void</span>) {</div>
+          <div class="ln">  <span class="hw">printf</span>(<span class="s">"3 + 4 = %d\n"</span>, <span class="hw">add</span>(3, 4));</div>
+          <div class="ln">  <span class="hw">printf</span>(<span class="s">"3 * 4 = %d\n"</span>, <span class="hw">mul</span>(3, 4));</div>
+          <div class="ln">  <span class="k">return</span> 0;</div>
+          <div class="ln">}</div></div></div>
+        <div class="lab" style="left:420px;top:122px;width:120px">Compiler</div>
+        <svg class="ov"><defs><marker id="ah2" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#16181d"/></marker></defs><path id="p2arr" d="M424 160 H 536" stroke="#16181d" marker-end="url(#ah2)"/></svg>
+        <div class="card ph" id="p2s" style="left:550px;top:80px;width:440px;height:232px"><div class="hd">main.s<span>Assembler</span></div><div class="bd">
+          <div class="ln">main:</div>
+          <div class="ln">  mov   edi, 3</div>
+          <div class="ln">  mov   esi, 4</div>
+          <div class="ln p2c">  call  add</div>
+          <div class="ln c">  …</div>
+          <div class="ln p2c">  call  printf</div>
+          <div class="ln c">  …</div>
+          <div class="ln p2c">  call  mul</div>
+          <div class="ln c">  …</div></div></div>
+        </div>
+        <div class="layer" id="p2ov">
+          <div class="card" style="left:10px;top:78px;width:330px;height:80px"><div class="hd">main.c</div><div class="bd"><div class="ln"><span class="k">int</span> main(<span class="k">void</span>) {</div><div class="ln">  printf(…, add(3, 4));</div></div></div>
+          <div class="lab sm" style="left:352px;top:96px;width:200px">Compiler</div>
+          <div class="card ph" id="p2o0" style="left:570px;top:78px;width:420px;height:80px"><div class="hd">main.s<span>Assembler</span></div><div class="bd"><div class="ln">main:</div><div class="ln">  mov edi, 3  …  call add  …</div></div></div>
+          <div class="card" style="left:10px;top:168px;width:330px;height:80px"><div class="hd">add.c</div><div class="bd"><div class="ln"><span class="k">int</span> add(<span class="k">int</span> a, <span class="k">int</span> b) {</div><div class="ln">  <span class="k">return</span> a + b; }</div></div></div>
+          <div class="lab sm" style="left:352px;top:186px;width:200px">Compiler</div>
+          <div class="card ph" id="p2o1" style="left:570px;top:168px;width:420px;height:80px"><div class="hd">add.s<span>Assembler</span></div><div class="bd"><div class="ln">add:</div><div class="ln">  push rbp  …  add eax, edx  …  ret</div></div></div>
+          <div class="card" style="left:10px;top:258px;width:330px;height:80px"><div class="hd">mul.c</div><div class="bd"><div class="ln"><span class="k">int</span> mul(<span class="k">int</span> a, <span class="k">int</span> b) {</div><div class="ln">  <span class="k">return</span> a * b; }</div></div></div>
+          <div class="lab sm" style="left:352px;top:276px;width:200px">Compiler</div>
+          <div class="card ph" id="p2o2" style="left:570px;top:258px;width:420px;height:80px"><div class="hd">mul.s<span>Assembler</span></div><div class="bd"><div class="ln">mul:</div><div class="ln">  push rbp  …  imul eax, …  ret</div></div></div>
+          <svg class="ov" id="p2ovsvg"><defs><marker id="ah2b" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#16181d"/></marker></defs><path class="draw" stroke="#16181d" marker-end="url(#ah2b)" d="M356 122 H 556"/><path class="draw" stroke="#16181d" marker-end="url(#ah2b)" d="M356 212 H 556"/><path class="draw" stroke="#16181d" marker-end="url(#ah2b)" d="M356 302 H 556"/></svg>
+        </div>
+      </div>
+
+      <!-- 3 · Assembler -->
+      <div class="pn" id="p3">
+        <div class="card" style="left:10px;top:78px;width:300px;height:80px"><div class="hd">main.s</div><div class="bd"><div class="ln">  call  add   …</div><div class="ln">  call  printf … call mul</div></div></div>
+        <div class="lab sm" style="left:318px;top:96px;width:106px">Assembler</div>
+        <div class="card ph" id="p3o0" style="left:430px;top:78px;width:560px;height:80px"><div class="hd">main.o<span>Maschinencode</span></div><div class="bd"><div class="ln"><span class="b">01010101 01001000 10001001 11100101</span></div><div class="ln"><span class="b">… 10111111 00000011 … 11101000 …</span></div></div></div>
+        <div class="card" style="left:10px;top:168px;width:300px;height:80px"><div class="hd">add.s</div><div class="bd"><div class="ln">add:</div><div class="ln">  …  add eax, edx  …  ret</div></div></div>
+        <div class="lab sm" style="left:318px;top:186px;width:106px">Assembler</div>
+        <div class="card ph" id="p3o1" style="left:430px;top:168px;width:560px;height:80px"><div class="hd">add.o<span>Maschinencode</span></div><div class="bd"><div class="ln"><span class="b">01010101 01001000 10001001 11100101</span></div><div class="ln"><span class="b">… 00000001 11010000 … 11000011</span></div></div></div>
+        <div class="card" style="left:10px;top:258px;width:300px;height:80px"><div class="hd">mul.s</div><div class="bd"><div class="ln">mul:</div><div class="ln">  …  imul eax, …  ret</div></div></div>
+        <div class="lab sm" style="left:318px;top:276px;width:106px">Assembler</div>
+        <div class="card ph" id="p3o2" style="left:430px;top:258px;width:560px;height:80px"><div class="hd">mul.o<span>Maschinencode</span></div><div class="bd"><div class="ln"><span class="b">01010101 01001000 10001001 11100101</span></div><div class="ln"><span class="b">… 00001111 10101111 … 11000011</span></div></div></div>
+        <div class="warnbox" id="p3w"><b>Achtung:</b> nicht nur 0 und 1, auch Namen wie <span class="mono">add</span> und <span class="mono">printf</span></div>
+        <svg class="ov" id="p3svg"><defs><marker id="ah3" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#16181d"/></marker></defs><path class="draw" stroke="#16181d" marker-end="url(#ah3)" d="M320 122 H 416"/><path class="draw" stroke="#16181d" marker-end="url(#ah3)" d="M320 212 H 416"/><path class="draw" stroke="#16181d" marker-end="url(#ah3)" d="M320 302 H 416"/></svg>
+      </div>
+
+      <!-- 4 · Linker -->
+      <div class="pn" id="p4">
+        <div class="frame ph" id="p4x" style="left:640px;top:80px;width:350px;height:250px"><div class="fh">exec<span id="p4xs">noch leer</span></div></div>
+        <div class="lab" style="left:370px;top:150px;width:250px">Linker<small>setzt alles zusammen</small></div>
+        <svg class="ov"><defs><marker id="ah4" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#16181d"/></marker></defs><path d="M362 204 H 626" stroke="#16181d" marker-end="url(#ah4)"/></svg>
+        <div class="card slim" id="p4mo" style="left:10px;top:120px;width:330px"><div class="hd">main.o<span>01010101 10111111 …</span></div></div>
+        <div class="card slim" id="p4a" style="left:10px;top:166px;width:330px"><div class="hd">add.o<span>01010101 01001000 …</span></div></div>
+        <div class="card slim" id="p4m" style="left:10px;top:212px;width:330px"><div class="hd">mul.o<span>01010101 01001000 …</span></div></div>
+        <div class="card slim lt" id="p4l" style="left:10px;top:258px;width:330px"><div class="hd">C-Bibliothek<span>printf und mehr</span></div></div>
+      </div>
+
+      <!-- 5 · Ausführen -->
+      <div class="pn" id="p5">
+        <div class="card" id="p5x" style="left:10px;top:118px;width:268px;height:150px"><div class="hd">exec<span>ein Programm</span></div><div class="bd">
+          <div class="ln"><span class="b">01010101 01001000</span></div>
+          <div class="ln"><span class="b">10001001 11100101</span></div>
+          <div class="ln"><span class="b">10111111 00000011</span></div>
+          <div class="from"><i>main.c</i><i>add.c</i><i>mul.c</i><i>printf</i></div></div></div>
+        <svg class="ov"><defs><marker id="ah5" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#16181d"/></marker></defs>
+          <path d="M284 193 H 320" stroke="#16181d" marker-end="url(#ah5)"/><path d="M436 193 H 488" stroke="#16181d" marker-end="url(#ah5)"/></svg>
+        <svg class="cpu" id="p5cpu" viewBox="0 0 40 40" style="position:absolute;left:326px;top:138px;width:110px;height:110px"><g fill="#8a909c"><rect x="10" y="1" width="3" height="6"/><rect x="18" y="1" width="3" height="6"/><rect x="26" y="1" width="3" height="6"/><rect x="10" y="33" width="3" height="6"/><rect x="18" y="33" width="3" height="6"/><rect x="26" y="33" width="3" height="6"/><rect x="1" y="10" width="6" height="3"/><rect x="1" y="18" width="6" height="3"/><rect x="1" y="26" width="6" height="3"/><rect x="33" y="10" width="6" height="3"/><rect x="33" y="18" width="6" height="3"/><rect x="33" y="26" width="6" height="3"/></g><rect class="core" x="6" y="6" width="28" height="28" rx="4" fill="#2b303b" stroke="#16181d" stroke-width="1.5"/><text x="20" y="23.5" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8" font-weight="600" fill="#ffd400">CPU</text></svg>
+        <div class="card" style="left:500px;top:100px;width:490px;height:193px"><div class="hd">Terminal</div><div class="bd" id="p5t" style="font-size:18px;line-height:30px"></div></div>
+      </div>
+
+      <div id="cmd"></div>
+    </div>
+  </div>
+  <div class="cap"><h1 id="ttl"></h1><p id="say"></p></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Zurück">←</button>
+    <span id="dots" style="display:flex;gap:6px"></span>
+    <button id="replay" aria-label="Teil neu starten" title="Teil neu starten (R)">↺</button>
+    <button id="next">Weiter →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), box = $('box');
+  const Q = (sel, root) => [...(root || document).querySelectorAll(sel)];
+
+  /* ---------- Die Teile ---------- */
+  const S = [
+    { dot: '0', bar: 0, cmd: false, title: 'Fünf Dateien, ein Programm', beats: [
+      { say: 'Unser Rechner aus Aufgabe 1 besteht aus fünf Dateien. <code>main.c</code> ruft <code>add</code> und <code>mul</code> auf. Geschrieben sind die beiden in <code>add.c</code> und <code>mul.c</code>.' },
+      { say: 'In den Header-Dateien <code>.h</code> steht nur, <b>wie</b> man die Funktion aufruft. Mit <code>#include</code> holen sich die <code>.c</code>-Dateien diese Zeile.', m: 1, d: 1300 },
+      { say: 'Das sind alles nur Textdateien. Die <b>CPU</b> versteht aber nur <b>Nullen und Einsen</b>. <code>gcc</code> übersetzt unseren Text in vier Schritten.', m: 2, d: 900 },
+      { say: 'Die vier Schritte: <b>Präprozessor</b>, <b>Compiler</b>, <b>Assembler</b>, <b>Linker</b>. Am Ende ist aus unserem C-Code eine Folge von Bits geworden, die die CPU direkt ausführen kann.', m: 3, d: 1900 }
+    ] },
+    { dot: '1', bar: 1, cmd: true, title: '1 · Präprozessor: Text kopieren', beats: [
+      { say: 'Der Präprozessor versteht kein C. Er sucht nur die Zeilen, die mit <code>#</code> beginnen.' },
+      { say: 'Jedes <code>#include</code> wird durch den <b>ganzen Inhalt</b> der Header-Datei ersetzt. Bei <code>add.h</code> ist das eine Zeile. <code>stdio.h</code> ist aber riesig und holt noch viele weitere Header dazu.', m: 1, d: 2400 },
+      { say: 'Kommentare fliegen raus. Übrig bleibt normaler C-Text, nur ohne <code>#</code>-Zeilen. Diesen Schritt allein macht <code>gcc -E</code>.', m: 2, cmd: 'gcc -E main.c', d: 1300 },
+      { say: 'Wie lang ist <code>main.c</code> jetzt? Aus 10 Zeilen werden <b>580</b>. Fast alles kommt aus <code>stdio.h</code>. Unser eigener Code steht ganz unten.', m: 3, cmd: 'gcc -E main.c | wc -l', d: 3900 }
+    ] },
+    { dot: '2', bar: 2, cmd: true, title: '2 · Compiler: aus C wird Assembler', beats: [
+      { say: 'Der Compiler übersetzt C in <b>Assembler</b>, die Sprache aus KGÜ 2.' },
+      { say: 'Aus <code>main.c</code> wird <code>main.s</code>.', m: 1, d: 1700 },
+      { say: 'Die gelben Stellen gehören zusammen: <code>add</code>, <code>printf</code> und <code>mul</code> aus dem C-Code tauchen im Assembler wieder auf, als <code>call add</code>, <code>call printf</code> und <code>call mul</code>.', m: 2, d: 700 },
+      { say: 'Genauso übersetzt er <code>add.c</code> und <code>mul.c</code>. Jede <code>.c</code>-Datei wird <b>für sich</b> zu einer eigenen <code>.s</code>-Datei. Bis hierher geht <code>gcc -S</code>.', m: 3, cmd: 'gcc -S -masm=intel main.c add.c mul.c', d: 2800 }
+    ] },
+    { dot: '3', bar: 3, cmd: true, title: '3 · Assembler: aus Assembler werden Nullen und Einsen', beats: [
+      { say: 'Der Assembler übersetzt jede <code>.s</code>-Datei in <b>Maschinencode</b>: Nullen und Einsen.' },
+      { say: 'Aus <code>main.s</code> wird <code>main.o</code>, aus <code>add.s</code> wird <code>add.o</code>, aus <code>mul.s</code> wird <code>mul.o</code>. Solche Dateien heißen <b>Objektdateien</b>.', m: 1, d: 1600 },
+      { say: '<b>Achtung:</b> Eine Objektdatei ist noch kein fertiges Programm. Darin stehen auch <b>Namen</b> wie <code>add</code> und <code>printf</code>. Die braucht gleich der Linker.', m: 2, cmd: 'gcc -c main.c add.c mul.c', d: 1500 }
+    ] },
+    { dot: '4', bar: 4, cmd: true, title: '4 · Linker: alles zusammensetzen', beats: [
+      { say: 'Der Linker nimmt alle Objektdateien und die C-Bibliothek, in der <code>printf</code> steckt.' },
+      { say: 'Er schaut sich alle Dateien an und setzt sie zu <b>einer einzigen</b> ausführbaren Datei zusammen: <code>exec</code>.', m: 1, cmd: 'gcc main.o add.o mul.o -o exec', d: 1900 }
+    ] },
+    { dot: '5', bar: 5, cmd: false, title: 'Ausführen', beats: [
+      { say: 'Jetzt haben wir <b>eine</b> Datei: <code>exec</code>. Sie ist aus unseren drei <code>.c</code>-Dateien und <code>printf</code> entstanden, ist aber ein einziges Programm.' },
+      { say: 'Mit <code>./exec</code> starten wir es. Die CPU führt die Nullen und Einsen aus, und im Terminal steht das Ergebnis.', m: 1, d: 2200 },
+      { say: 'Im Alltag tippt man nur <b>einen</b> Befehl. Die vier Schritte passieren trotzdem, nur unsichtbar.', m: 2, d: 1800 }
+    ] }
+  ];
+  /* Befehl beim Linken (Szene 4, Schritt 1) */
+
+  /* ---------- Hilfen ---------- */
+  let T = [];
+  const later = (f, ms) => T.push(setTimeout(f, ms));
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const delay = (el, s) => { el.style.transitionDelay = s + 's'; };
+  function setCmd(show, txt, typing, err) {
+    const c = $('cmd');
+    c.classList.toggle('on', show); c.classList.toggle('err', !!err);
+    const pre = '<span class="pr">$</span> ';
+    if (!txt) { c.innerHTML = pre + '<span class="cu"></span>'; return; }
+    if (!typing) { c.innerHTML = pre + esc(txt); return; }
+    c.innerHTML = pre + '<span class="cu"></span>';
+    [...txt].forEach((ch, i) => later(() => { c.innerHTML = pre + esc(txt.slice(0, i + 1)) + '<span class="cu"></span>'; }, 100 + i * 32));
+    later(() => { c.innerHTML = pre + esc(txt); }, 140 + txt.length * 32);
+  }
+  const drawPaths = (svg, on, step) => Q('path.draw', svg).forEach((p, i) => {
+    if (!p.style.getPropertyValue('--L')) p.style.setProperty('--L', Math.ceil(p.getTotalLength()) + 1);
+    p.style.transitionDelay = on ? i * step + 's' : '0s'; p.classList.toggle('drawn', on);
+  });
+  function tour() { Q('.st').forEach((st, i) => later(() => { st.classList.remove('tour'); void st.offsetWidth; st.classList.add('tour'); }, 150 + i * 260)); }
+  function term(lines, cursor) {
+    $('p5t').innerHTML = lines.map((l, i) => '<div class="tl">' + (l.startsWith('$') ? '<span class="pr">$</span>' + esc(l.slice(1)) : esc(l)) + (cursor && i === lines.length - 1 ? '<span class="cu"></span>' : '') + '</div>').join('');
+  }
+  const RUN = ['$ ./exec', '3 + 4 = 7', '3 * 4 = 12'], ONE = '$ gcc main.c add.c mul.c -o exec';
+
+  /* ---------- Zeichnen einer Stufe ---------- */
+  function draw(si, m, instant) {
+    T.forEach(clearTimeout); T = [];
+    if (instant) stage.classList.add('noanim');
+    const A = !instant, sc = S[si];
+    Q('.pn').forEach((p, i) => p.classList.toggle('on', i === si));
+    Q('.st').forEach(st => { const i = +st.dataset.i; st.classList.toggle('cur', i === sc.bar); st.classList.toggle('done', i < sc.bar); st.classList.remove('tour'); });
+    let cb = null; sc.beats.forEach(b => { if (b.cmd && b.m <= m) cb = b; });
+    setCmd(sc.cmd, cb && cb.cmd, A && cb && cb.m === m, si === 4 && m === 3);
+
+    if (si === 0) {
+      drawPaths($('p0svg'), m >= 1, 0.25);
+      ['p0a', 'p0m'].forEach(id => $(id).classList.toggle('hlx', m >= 1));
+      $('p0goal').classList.toggle('hl', m >= 2);
+      if (A && m === 3) tour();
+    }
+    if (si === 1) {
+      const play = A && m === 1;
+      ['p1i1', 'p1i2', 'p1i3'].forEach((id, i) => {
+        const ln = $(id), t = play ? i * 0.55 + 0.9 : 0;
+        [ln, ...ln.children].forEach(e => delay(e, t));
+        ln.classList.toggle('hlx', m === 0);
+        ln.classList.toggle('done', m >= 1);
+      });
+      Q('#p1 .ghost').forEach((g, i) => { g.classList.remove('fly'); if (play) { void g.offsetWidth; g.style.animationDelay = i * 0.55 + 's'; g.classList.add('fly'); } });
+      $('p1c').classList.toggle('col', m >= 2);
+      const n = $('p1n'), N = 580;
+      n.textContent = (m >= 1 && !play ? N : 10) + ' Zeilen';
+      if (play) for (let j = 1; j <= 24; j++) later(() => { n.textContent = Math.round(10 + (N - 10) * j / 24) + ' Zeilen'; }, 950 + j * 45);
+      const un = m >= 3, pu = A && m === 3, i1 = $('p1i1');
+      if (m >= 2) delay(i1, 0);
+      i1.classList.toggle('unf', un);
+      $('p1bd').style.transitionDelay = pu ? '0.8s' : '0s';
+      $('p1bd').style.transform = un ? 'translateY(-924px)' : 'none';
+      const th = $('p1th'); th.style.transitionDelay = pu ? '0.8s, 0.2s' : '0s';
+      th.style.height = un ? '10px' : '100%'; th.style.top = un ? 'calc(100% - 10px)' : '0';
+      ['p1up', 'p1our'].forEach(id => { delay($(id), pu ? 3.7 : 0); $(id).style.opacity = un ? 1 : 0; });
+    }
+    if (si === 2) {
+      const play1 = A && m === 1;
+      delay($('p2s'), 0); $('p2s').classList.toggle('ph', m < 1);
+      Q('#p2s .ln').forEach((e, i) => { delay(e, play1 ? 0.25 + i * 0.12 : 0); e.style.opacity = m >= 1 ? 1 : 0; });
+      $('p2arr').classList.toggle('flow', play1);
+      if (play1) later(() => $('p2arr').classList.remove('flow'), 1600);
+      $('p2det').classList.toggle('match', m === 2);
+      const ov = m >= 3, po = A && m === 3;
+      $('p2det').classList.toggle('out', ov); delay($('p2ov'), po ? 0.3 : 0); $('p2ov').classList.toggle('in', ov);
+      Q('#p2ovsvg path.draw').forEach((p, i) => {
+        if (!p.style.getPropertyValue('--L')) p.style.setProperty('--L', Math.ceil(p.getTotalLength()) + 1);
+        p.style.transitionDelay = po ? 0.9 + i * 0.55 + 's' : '0s'; p.classList.toggle('drawn', ov);
+      });
+      ['p2o0', 'p2o1', 'p2o2'].forEach((id, i) => { const e = $(id), t = po ? 1.4 + i * 0.55 : 0; delay(e, t); delay(e.querySelector('.bd'), t + 0.15); Q('.hd span', e).forEach(x => delay(x, t)); e.classList.toggle('ph', !ov); });
+    }
+    if (si === 3) {
+      const play1 = A && m === 1;
+      drawPaths($('p3svg'), m >= 1, 0.25);
+      ['p3o0', 'p3o1', 'p3o2'].forEach((id, i) => { const e = $(id), t = play1 ? 0.45 + i * 0.25 : 0; delay(e, t); delay(e.querySelector('.bd'), t + 0.15); Q('.hd span', e).forEach(s => delay(s, t)); e.classList.toggle('ph', m < 1); });
+      delay($('p3w'), A && m === 2 ? 0.3 : 0); $('p3w').style.opacity = m >= 2 ? 1 : 0;
+    }
+    if (si === 4) {
+      const moved = m >= 1, mv = A && m === 1;
+      ['p4mo', 'p4a', 'p4m', 'p4l'].forEach((id, i) => { const e = $(id); delay(e, mv ? i * 0.15 : 0); e.style.transform = moved ? 'translate(645px,0)' : 'none'; });
+      const x = $('p4x'); delay(x, mv ? 1.0 : 0); x.classList.toggle('ph', !moved);
+      $('p4xs').textContent = moved ? 'ausführbar' : 'noch leer';
+    }
+    if (si === 5) {
+      const cpu = $('p5cpu'); cpu.classList.remove('run');
+      if (!A || m === 0) {
+        term(m === 0 ? ['$ '] : m === 1 ? RUN.concat('$ ') : RUN.concat(ONE, '$ '), true);
+      } else if (m === 1) {
+        term(['$ '], true);
+        const cmdT = './exec';
+        [...cmdT].forEach((ch, i) => later(() => term(['$ ' + cmdT.slice(0, i + 1)], true), 150 + i * 60));
+        const t0 = 150 + cmdT.length * 60 + 200;
+        later(() => { term(['$ ./exec'], false); cpu.classList.add('run'); }, t0);
+        later(() => term(RUN.slice(0, 2), false), t0 + 500);
+        later(() => term(RUN, false), t0 + 900);
+        later(() => { term(RUN.concat('$ '), true); cpu.classList.remove('run'); }, t0 + 1200);
+      } else {
+        const txt = ONE.slice(2);
+        term(RUN.concat('$ '), true);
+        [...txt].forEach((ch, i) => later(() => term(RUN.concat('$ ' + txt.slice(0, i + 1)), true), 100 + i * 32));
+        later(() => term(RUN.concat(ONE, '$ '), true), 160 + txt.length * 32);
+        tour();
+      }
+    }
+    if (instant) { void stage.offsetWidth; stage.classList.remove('noanim'); }
+  }
+
+  /* ---------- Schritte und Bedienung ---------- */
+  function expand(sc) {
+    const steps = []; let m = 0;
+    sc.beats.forEach(b => {
+      if (b.m != null) { steps.push({ say: b.say, m }); m = b.m; steps.push({ say: b.say, m, play: true, d: b.d || 1500 }); }
+      else steps.push({ say: b.say, m });
+    });
+    return steps;
+  }
+  let cur = 0, k = 0, steps = [], busy = false, bt = null;
+  const dots = $('dots');
+  S.forEach((s, i) => { const d = document.createElement('button'); d.className = 'dot'; d.textContent = s.dot; d.title = s.title; d.onclick = () => show(i); dots.appendChild(d); });
+  function ui() {
+    const nx = steps[k + 1];
+    $('next').textContent = busy ? 'läuft …' : nx && nx.play ? 'Zeigen →' : 'Weiter →';
+    $('next').classList.toggle('play', !busy && !!(nx && nx.play));
+    $('next').disabled = !busy && !nx && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && k === 0;
+    $('cnt').textContent = 'Schritt ' + (k + 1) + ' / ' + steps.length;
+  }
+  function go(j, anim) {
+    clearTimeout(bt); busy = false; k = j;
+    const s = steps[j]; $('say').innerHTML = s.say;
+    if (anim && s.play) { draw(cur, steps[j - 1].m, true); requestAnimationFrame(() => requestAnimationFrame(() => draw(cur, s.m, false))); busy = true; bt = setTimeout(() => { busy = false; ui(); }, s.d); }
+    else draw(cur, s.m, true);
+    ui();
+  }
+  function show(i, last) {
+    cur = i; steps = expand(S[i]);
+    $('act').textContent = 'KGÜ 1 · Akt 2 · gcc'; $('ttl').textContent = S[i].title;
+    [...dots.children].forEach((d, n) => { if (n === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    k = 0; go(last ? steps.length - 1 : 0, false);
+  }
+  function next() { if (busy) { go(k, false); return; } if (k < steps.length - 1) go(k + 1, true); else if (cur < S.length - 1) show(cur + 1); }
+  function prev() { if (k > 0) go(k - 1, false); else if (cur > 0) show(cur - 1, true); }
+  $('next').onclick = next; $('prev').onclick = prev; $('replay').onclick = () => show(cur);
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'r' || e.key === 'R') show(cur);
+  });
+  function fit() {
+    const w = box.clientWidth, s = Math.max(0.5, Math.min(w / 1000, (window.innerHeight - 250) / 380, 1.6));
+    stage.style.transform = 'scale(' + s + ')'; stage.style.left = (w - 1000 * s) / 2 + 'px'; box.style.height = 380 * s + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.__go = (i, j) => { show(i); if (j) go(Math.min(j, steps.length - 1), false); };
+  window.__play = (i, j) => { show(i); if (j > 1) go(j - 1, false); go(j, true); };
+  fit(); show(0);
+})();
+</script>
+</body>
+</html>

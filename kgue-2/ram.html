@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGÜ 2 · RAM und Adressen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Wie die KGÜ-5-Seiten: bewusst nur hell (Beamer). Bühne 1000×380, darunter Titel und Text.
+   Regel: erst Text, Animation erst nach Klick. Keine Emoji, eigene Zeichnungen.
+   Vier Teile: Wo liegt was · der RAM-Riegel · im Chip · eine Zelle. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f1f2f5;
+  --warn: #c2410c; --hl: #fff1a8; --ptr: #ffd400; --cand: #2f5fb8; --rip: #7a4fd0;
+  --chip: #2b303b; --chip2: #4a5163; --pin: #8a909c;
+  --rowc: #a37800;
+  --pcb: #2e6b3d; --pcb2: #1f4d2b; --gold: #c9a227; --ssd: #1d2a3a;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 10px 16px 10px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 24px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.top .act { color: var(--fg); }
+/* Ende von Teil 2: frei zwischen Zeichnung und den zwei Fotos wechseln (wie auf der alten Seite) */
+.top { align-items: center; }
+.tabs { display: flex; gap: 10px; }
+.tabs:not([hidden]) { animation: tabin 0.5s cubic-bezier(.3,1.5,.5,1); }
+@keyframes tabin { from { opacity: 0; transform: translateY(-6px) scale(0.9); } }
+.top:has(.tabs:not([hidden])) { height: 44px; }
+.tabs button { font-size: 17px; padding: 5px 18px; border-radius: 9px; border: 2px solid var(--fg); text-transform: none; letter-spacing: 0; font-weight: 600; }
+.tabs button:hover { background: var(--soft); }
+.tabs button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--cand); outline-offset: 2px; }
+code { font-family: var(--font-mono); font-variant-ligatures: none; }
+
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 0 0; }
+.stage.noanim, .stage.noanim * { transition: none !important; animation: none !important; }
+.layer { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+.L1 #t1, .L2 #t2, .L3 #t3, .L4 #t4 { opacity: 1; }
+.lab { position: absolute; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; white-space: nowrap; }
+svg { overflow: visible; }
+
+/* ---------- Teil 1: CPU, RAM, SSD ---------- */
+.cpu { position: absolute; left: 34px; top: 30px; width: 210px; height: 196px; background: var(--chip); border: 3px solid var(--fg); border-radius: 16px; transition: filter 0.6s; }
+.cpu::before { content: ""; position: absolute; inset: 8px; border: 1.5px solid #555c6c; border-radius: 10px; }
+.cpu .nm { position: absolute; left: 16px; top: 12px; color: #fff; font-family: var(--font-mono); font-weight: 600; font-size: 15px; letter-spacing: 0.05em; }
+.pin { position: absolute; background: repeating-linear-gradient(var(--dir, 0deg), var(--pin) 0 7px, transparent 7px 17px); }
+.pin.l, .pin.r { top: 24px; bottom: 24px; width: 11px; }
+.pin.l { left: -14px; } .pin.r { right: -14px; }
+.pin.t, .pin.b { left: 24px; right: 24px; height: 11px; --dir: 90deg; }
+.pin.t { top: -14px; } .pin.b { bottom: -14px; }
+.t1regs { position: absolute; left: 18px; right: 18px; top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.t1r { display: flex; align-items: center; gap: 5px; }
+.t1r span { width: 32px; font-family: var(--font-mono); font-weight: 600; font-size: 13.5px; color: var(--ptr); }
+.t1r b { flex: 1; height: 28px; border-radius: 6px; background: #fff; border: 2px solid var(--pin); font-family: var(--font-mono); font-size: 15px; line-height: 24px; text-align: right; padding: 0 6px; transition: background 0.4s, color 0.4s; }
+.t1r b.hot { background: var(--ptr); }
+.link { position: absolute; display: flex; flex-direction: column; justify-content: space-between; }
+.link i { display: block; height: 3px; background: var(--pin); border-radius: 2px; }
+#t1stick { position: absolute; left: 300px; top: 70px; width: 360px; height: 110px; }
+.rc { fill: var(--chip); }
+/* beim Laden bekommt jeder Chip sein eigenes Byte: nur ein Streifen oben füllt sich */
+.rfill { fill: #6b5a1a; opacity: 0; transition: opacity 0.3s; }
+.rbits { font-family: var(--font-mono); font-size: 8.5px; font-weight: 600; fill: var(--ptr); opacity: 0; transition: opacity 0.3s; }
+.t1load .rfill, .t1load .rbits { opacity: 1; }
+/* Kasten „Dauerhafter Speicher“: SSD oben, „oder“-Trennlinie, Festplatte unten */
+.store { position: absolute; left: 700px; top: 72px; width: 296px; height: 194px; border: 2px dashed var(--line); border-radius: 14px; transition: border-color 0.5s, background 0.5s; }
+.t1off .store { border: 3px solid #3f7d1c; background: #f1f8ea; }
+.legend { position: absolute; left: 848px; top: 62px; transform: translateX(-50%); background: var(--bg); padding: 0 8px; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; white-space: nowrap; line-height: 20px; }
+.legend .k { display: none; color: #3f7d1c; font-size: 15px; text-transform: none; letter-spacing: 0; }
+.legend svg { vertical-align: -3px; margin-right: 4px; }
+.t1off .legend .n { display: none; } .t1off .legend .k { display: inline; }
+#t1ssd { position: absolute; left: 713px; top: 82px; width: 270px; height: 80px; }
+.oder { position: absolute; left: 722px; top: 158px; width: 252px; display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.oder::before, .oder::after { content: ""; flex: 1; height: 1.5px; background: var(--line); }
+#t1hdd { position: absolute; left: 740px; top: 184px; width: 104px; height: 73px; }
+.hddlab { position: absolute; left: 856px; top: 194px; font-size: 14px; font-weight: 600; line-height: 1.25; color: var(--fg); }
+.hddlab small { display: block; font-size: 12px; color: var(--muted); font-weight: 400; }
+.gone { position: absolute; display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; color: var(--warn); opacity: 0; transition: opacity 0.4s 0.5s; }
+.t1off .gone { opacity: 1; }
+.t1off #t1stick { filter: brightness(0.75) saturate(0.5); }
+.hddspin { transform-box: view-box; transform-origin: 46px 42px; animation: spin 1.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.t1off .hddspin { animation-play-state: paused; }
+.file { position: absolute; left: 716px; top: 6px; display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; }
+.file svg { display: block; }
+.spd { position: absolute; top: 274px; width: 250px; height: 98px; border: 2px solid var(--fg); border-radius: 12px; background: #fff; padding: 6px 14px; opacity: 0; transform: translateY(12px); transition: opacity 0.5s, transform 0.5s; }
+.spd small { display: block; font-size: 16px; color: var(--muted); font-weight: 600; }
+.spd b { display: block; font-family: var(--font-mono); font-size: 32px; line-height: 1.15; }
+.spd span { display: block; font-size: 15px; color: var(--muted); line-height: 1.3; }
+.sp1 #spd1, .sp2 #spd2, .sp3 #spd3 { opacity: 1; transform: none; }
+.gap { position: absolute; top: 300px; width: 95px; text-align: center; font-size: 15px; font-weight: 600; line-height: 1.25; color: var(--warn); opacity: 0; transition: opacity 0.4s 0.3s; }
+.gap i { display: block; font-style: normal; font-size: 22px; line-height: 1; }
+.sp2 #gap1, .sp3 #gap2 { opacity: 1; }
+#hddt { opacity: 0; transition: opacity 0.4s; } .sp4 #hddt { opacity: 1; }
+.pwr { position: absolute; left: 440px; top: 212px; width: 100px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--muted); opacity: 0; transition: opacity 0.4s; }
+.pwrshow .pwr { opacity: 1; }
+.pwr i { position: relative; width: 46px; height: 24px; border-radius: 12px; background: #4d7c0f; border: 2px solid var(--fg); transition: background 0.4s; }
+.pwr i::after { content: ""; position: absolute; top: 2px; left: 23px; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 1.5px solid var(--fg); transition: left 0.4s; }
+.t1off .pwr i { background: #9aa0aa; } .t1off .pwr i::after { left: 3px; }
+.t1off .cpu { filter: brightness(0.6); }
+.t1off .rc { fill: #1b1e25; }
+.t1off .rfill, .t1off .rbits { opacity: 0 !important; transition-delay: 0s !important; }
+
+/* ---------- Teil 2: Riegel, Fotos ---------- */
+#t2stick { position: absolute; left: 70px; top: 46px; width: 860px; height: 300px; transition: opacity 0.6s; }
+.t2c { fill: none; stroke: var(--ptr); stroke-width: 4; opacity: 0; transition: opacity 0.35s; }
+.t2chips .t2c { opacity: 1; }
+.t2pins { fill: none; stroke: var(--ptr); stroke-width: 4; opacity: 0; transition: opacity 0.4s; }
+.t2pin .t2pins { opacity: 1; }
+.t2photo #t2stick { opacity: 0; }
+.photo { position: absolute; top: 2px; height: 376px; opacity: 0; transition: opacity 0.7s; border-radius: 10px; overflow: hidden; }
+.photo img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.photo svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+#ph1 { left: 109px; width: 782px; }
+#ph2 { left: 91px; width: 818px; }
+.t2p1 #ph1, .t2p2 #ph2 { opacity: 1; }
+.ov { opacity: 0; transition: opacity 0.45s; }
+.ov.on { opacity: 1; }
+
+/* ---------- Teil 3: im Chip ---------- */
+.adrbox { position: absolute; left: 20px; top: 40px; width: 340px; border: 2px solid var(--fg); border-radius: 12px; padding: 10px 14px; background: #fff; opacity: 0; transform: translateX(-14px); transition: opacity 0.5s, transform 0.5s; }
+.a1 .adrbox { opacity: 1; transform: none; }
+.adrbox small { display: block; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.adrbox .bits { font-family: var(--font-mono); font-size: 30px; font-weight: 600; letter-spacing: 0.04em; }
+.adrbox .bits span { transition: color 0.4s, background 0.4s; border-radius: 4px; padding: 0 2px; }
+.a2 .adrbox .rowb { background: #ffe1d1; color: var(--warn); }
+.a2 .adrbox .colb { background: #dbe6fb; color: var(--cand); }
+.split { margin-top: 6px; font-size: 18px; line-height: 1.5; opacity: 0; transition: opacity 0.5s; }
+.a2 .split { opacity: 1; }
+.split b { font-family: var(--font-mono); }
+#grid { position: absolute; left: 400px; top: 64px; }
+.gc { position: absolute; width: 30px; height: 30px; border-radius: 4px; border: 1.5px solid var(--line); background: #fff; transition: background 0.4s, border-color 0.4s; }
+.gc.hit { transition-delay: 0s; z-index: 3; }
+.a5 .gc.hit { background: #d23a2c; border-color: #a52a1f; }
+.sweep { position: absolute; border-radius: 6px; transition: transform 0.8s ease-in-out; }
+#rowsw { background: rgba(255,212,0,0.30); border: 2px solid var(--rowc); transform-origin: 0 50%; transform: scaleX(0); }
+#colsw { background: rgba(255,212,0,0.30); border: 2px solid var(--rowc); transform-origin: 50% 0; transform: scaleY(0); }
+.adrbox .aform { white-space: nowrap; } .aform { font-size: 23px; font-weight: 600; line-height: 1.3; }
+.asub { font-size: 20px; color: var(--muted); margin-top: 2px; }
+.glab { position: absolute; font-size: 19px; font-weight: 600; color: var(--rowc); white-space: nowrap; opacity: 0; transition: opacity 0.4s 0.5s; }
+.a3 #zlab, .a4 #zlab, .a5 #zlab, .a4 #slab, .a5 #slab { opacity: 1; }
+.hitlab { position: absolute; white-space: nowrap; font-size: 17px; font-weight: 600; color: #a52a1f; opacity: 0; transition: opacity 0.4s 0.3s; }
+.a5 .hitlab { opacity: 1; }
+.a3 #rowsw, .a4 #rowsw, .a5 #rowsw { transform: scaleX(1); }
+.a4 #colsw, .a5 #colsw { transform: scaleY(1); }
+.gnum { position: absolute; font-family: var(--font-mono); font-size: 12px; color: var(--muted); text-align: center; width: 30px; }
+.cnt { position: absolute; left: 20px; top: 230px; width: 340px; border: 2px solid var(--fg); border-radius: 12px; background: var(--hl); padding: 10px 14px; font-size: 17px; line-height: 1.45; opacity: 0; transform: translateY(12px); transition: opacity 0.5s, transform 0.5s; }
+.cnt1 .cnt { opacity: 1; transform: none; }
+.cnt b { font-family: var(--font-mono); }
+.cnt .r2 { opacity: 0; transition: opacity 0.5s 0.6s; }
+.cnt2 .cnt .r2 { opacity: 1; }
+
+/* ---------- Teil 4: eine Zelle ---------- */
+#t4svg { position: absolute; inset: 0; width: 1000px; height: 380px; }
+.wire { stroke: var(--fg); stroke-width: 3; fill: none; }
+#wl { stroke: var(--fg); stroke-width: 4; transition: stroke 0.4s, stroke-width 0.4s; }
+.wlon #wl { stroke: var(--ptr); stroke-width: 7; }
+#gate { transition: stroke 0.4s; }
+.wlon #gate { stroke: #b38f00; }
+#bl { stroke: var(--fg); stroke-width: 4; transition: stroke 0.4s, stroke-width 0.4s; }
+.blon #bl { stroke: var(--warn); stroke-width: 7; }
+#chan { stroke: #9aa0aa; stroke-width: 7; transition: stroke 0.4s; }
+.wlon #chan { stroke: var(--warn); }
+.wname { font-family: var(--font-body); font-size: 15px; font-weight: 600; fill: var(--muted); }
+.wlon .wname.w, .blon .wname.b { fill: var(--fg); }
+#tank { position: absolute; left: 600px; top: 96px; width: 170px; height: 220px; border: 3px solid var(--fg); border-top: none; border-radius: 0 0 18px 18px; overflow: hidden; background: #fff; }
+#fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: repeating-linear-gradient(0deg, #ffd400 0 10px, #ffe25c 10px 20px); transition-property: height; transition-timing-function: linear; }
+.tlab { position: absolute; left: 600px; width: 170px; top: 322px; text-align: center; font-size: 15px; color: var(--muted); }
+.mark { position: absolute; left: 778px; width: 60px; border-top: 2px dashed var(--muted); font-size: 12px; color: var(--muted); padding-top: 1px; }
+#bitv { position: absolute; left: 860px; top: 150px; width: 120px; text-align: center; font-family: var(--font-mono); font-size: 96px; font-weight: 600; line-height: 1; transition: color 0.4s; }
+#bitv small { display: block; font-family: var(--font-body); font-size: 14px; color: var(--muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 6px; }
+.q { position: absolute; left: 0; top: 0; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--ptr); border: 2px solid var(--fg); opacity: 0; offset-rotate: 0deg; transition: opacity 0.3s; }
+.qin { offset-path: path('M170 40 V210 H250 V200 H330 V210 H420 V236'); animation: run 1.1s linear infinite; }
+.qout { offset-path: path('M420 256 V300'); animation: run 1.4s linear infinite; }
+.flow .qin { opacity: 1; }
+.leak .qout { opacity: 1; }
+.qin:nth-child(2), .qout:nth-child(2) { animation-delay: -0.37s; } .qin:nth-child(3), .qout:nth-child(3) { animation-delay: -0.73s; }
+@keyframes run { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+.clock { position: absolute; left: 600px; top: 40px; width: 170px; text-align: center; font-family: var(--font-mono); font-size: 16px; font-weight: 600; opacity: 0; transition: opacity 0.4s; }
+.refr .clock { opacity: 1; }
+/* Vergleich: Zelle links (verkleinert), CPU mit Registern rechts */
+#t4cell { position: absolute; inset: 0; transform-origin: 0 0; transition: transform 0.8s ease-in-out; }
+.cmp #t4cell { transform: translate(-66px, 17px) scale(0.78); }
+#tank, .mark, .tlab, #bitv, #conn { transition: opacity 0.5s; }
+.cmp #tank, .cmp .mark, .cmp .tlab, .cmp #bitv, .cmp #conn { opacity: 0; }
+#cmpR, .c4l { opacity: 0; transition: opacity 0.6s 0.3s; }
+.cmp #cmpR, .cmp .c4l { opacity: 1; }
+#cmpR { position: absolute; inset: 0; }
+#cmpR svg { position: absolute; inset: 0; width: 1000px; height: 380px; }
+.pd { position: absolute; left: 0; top: 0; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; border: 2px solid var(--fg); opacity: 0; offset-rotate: 0deg; transition: opacity 0.3s; animation: run 4.8s linear infinite; }
+#pdR { background: var(--rip); } #pdM { background: var(--cand); offset-path: path('M612 176 H880 H612'); }
+.dots .pd { opacity: 1; }
+/* echtes Verhältnis 100 : 1. Ein Register-Zugriff (hin und zurück) = 250 ms, ein RAM-Zugriff = 100 × 250 ms */
+#pdR { animation-duration: 4s; } #pdM { animation-duration: 25s; }
+.note4 { position: absolute; left: 770px; top: 226px; width: 222px; opacity: 0; transition: opacity 0.4s; }
+.dots .note4 { opacity: 1; pointer-events: auto; }
+.cntr { display: flex; justify-content: space-between; font-size: 15px; line-height: 26px; font-weight: 600; }
+.cntr b { font-family: var(--font-mono); font-size: 17px; }
+.cntr.r { color: var(--rip); } .cntr.m { color: var(--cand); }
+.tempo { margin-top: 8px; font-size: 13.5px; color: var(--muted); font-weight: 600; }
+.tempo input { width: 100%; accent-color: var(--rip); margin: 2px 0 0; }
+.ans4 { position: absolute; top: 312px; border: 2px solid var(--fg); border-radius: 10px; background: var(--hl); padding: 6px 12px; font-size: 16px; line-height: 1.35; opacity: 0; transform: translateY(10px); transition: opacity 0.5s, transform 0.5s; }
+.ans4 b { font-family: var(--font-mono); }
+.cnt4 .ans4 { opacity: 1; transform: none; }
+.cnt4 .ans4.r { transition-delay: 0.5s; }
+
+/* fliegende Werte */
+#fx { position: absolute; inset: 0; pointer-events: none; }
+.fly { position: absolute; transform: translate(-50%, -50%); background: var(--ptr); border: 2px solid var(--fg); border-radius: 8px; padding: 2px 9px; font-family: var(--font-mono); font-weight: 600; font-size: 15px; white-space: nowrap; transition-property: left, top; transition-timing-function: ease-in-out; z-index: 9; box-shadow: 0 3px 8px rgba(0,0,0,0.25); }
+
+/* Unterteil */
+.cap { margin-top: 8px; min-height: 118px; }
+.cap h1 { font-size: 24px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.cap p { margin: 0; font-size: 21px; line-height: 1.35; max-width: 86ch; }
+.cap code { font-size: 0.92em; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot { width: 30px; height: 30px; padding: 0; border-radius: 50%; border-color: var(--line); font-family: var(--font-mono); font-size: 14px; }
+.dot[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#next { min-width: 170px; background: var(--fg); color: var(--bg); margin-left: auto; }
+#next.play { background: var(--ptr); color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="act" id="act"></span>
+    <span class="tabs" id="tabs" hidden><button data-v="0">Zeichnung</button><button data-v="1">Mein Laptop-RAM: vorne</button><button data-v="2">Mein Laptop-RAM: hinten</button></span>
+    <span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+
+      <!-- Teil 1 -->
+      <div class="layer" id="t1">
+        <div class="cpu" id="t1cpu">
+          <div class="pin l"></div><div class="pin r"></div><div class="pin t"></div><div class="pin b"></div>
+          <div class="nm">CPU</div>
+          <div class="t1regs">
+            <div class="t1r"><span>rax</span><b id="r-rax"></b></div><div class="t1r"><span>rbx</span><b id="r-rbx"></b></div>
+            <div class="t1r"><span>rcx</span><b id="r-rcx"></b></div><div class="t1r"><span>rdx</span><b id="r-rdx"></b></div>
+            <div class="t1r"><span>rsi</span><b id="r-rsi"></b></div><div class="t1r"><span>rdi</span><b id="r-rdi"></b></div>
+          </div>
+        </div>
+        <div class="link" style="left:258px;top:114px;width:44px;height:20px"><i></i><i></i><i></i></div>
+        <div class="link" style="left:660px;top:116px;width:54px;height:14px"><i></i><i></i></div>
+        <svg id="t1stick" viewBox="0 0 360 110" aria-hidden="true"></svg>
+        <div class="file" id="t1file"><svg width="38" height="46" viewBox="0 0 38 46"><path d="M3 3 H25 L35 13 V43 H3 Z" fill="#fff" stroke="var(--fg)" stroke-width="2.5" stroke-linejoin="round"/><path d="M25 3 V13 H35" fill="none" stroke="var(--fg)" stroke-width="2.5" stroke-linejoin="round"/><path d="M9 22 H29 M9 29 H29 M9 36 H22" stroke="var(--muted)" stroke-width="2.5"/></svg>programm</div>
+        <div class="store"></div>
+        <div class="legend"><span class="n">Dauerhafter Speicher</span><span class="k"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2.5 8.5 L6.5 12.5 L13.5 4" fill="none" stroke="#3f7d1c" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Daten bleiben</span></div>
+        <svg id="t1ssd" viewBox="0 0 270 80" aria-hidden="true"></svg>
+        <div class="oder">oder</div>
+        <svg id="t1hdd" viewBox="0 0 120 84" aria-hidden="true"></svg>
+        <div class="hddlab">Festplatte (HDD)<small>in älteren Rechnern</small></div>
+        <div class="gone" style="left:34px;top:246px;width:210px"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 2.5 L11.5 11.5 M11.5 2.5 L2.5 11.5" stroke="var(--warn)" stroke-width="2.6" stroke-linecap="round"/></svg> Daten weg</div>
+        <div class="gone" style="left:300px;top:172px;width:360px"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M2.5 2.5 L11.5 11.5 M11.5 2.5 L2.5 11.5" stroke="var(--warn)" stroke-width="2.6" stroke-linecap="round"/></svg> Daten weg</div>
+        <div class="pwr"><i></i>Strom</div>
+        <div class="spd" id="spd1" style="left:30px"><small>Register: 1 Zugriff</small><b>&lt; 1 ns</b></div>
+        <div class="gap" id="gap1" style="left:280px"><i>→</i>100×<br>langsamer</div>
+        <div class="spd" id="spd2" style="left:375px"><small>RAM: 1 Zugriff</small><b>≈ 100 ns</b></div>
+        <div class="gap" id="gap2" style="left:625px"><i>→</i>1000×<br>langsamer</div>
+        <div class="spd" id="spd3" style="left:720px"><small>SSD: 1 Zugriff</small><b>≈ 100 µs</b><span id="hddt">Festplatte: ≈ 10 ms</span></div>
+        <div id="t1a" style="position:absolute;left:400px;top:80px;width:1px;height:1px"></div>
+      </div>
+
+      <!-- Teil 2 -->
+      <div class="layer" id="t2">
+        <svg id="t2stick" viewBox="0 0 860 300" aria-hidden="true"></svg>
+        <div class="photo" id="ph1"><img src="ram-chips.jpg" alt="Echter RAM-Riegel, Seite mit vier schwarzen Speicherchips"><svg viewBox="0 0 1300 625" aria-hidden="true" id="ov1"></svg></div>
+        <div class="photo" id="ph2"><img src="ram-label.jpg" alt="Rückseite des RAM-Riegels mit Samsung-Aufkleber"><svg viewBox="0 0 1175 540" aria-hidden="true" id="ov2"></svg></div>
+      </div>
+
+      <!-- Teil 3 -->
+      <div class="layer" id="t3">
+        <div class="adrbox"><div class="aform">Adresse = <span style="color:var(--rowc)">Zeile</span> + <span style="color:var(--rowc)">Spalte</span></div><div class="asub">→ genau eine Zelle</div></div>
+        <div class="cnt"><div>1 GB = 2<sup>30</sup> Byte, jedes Byte hat 8 Bit</div><div class="r2">= 2<sup>33</sup> Bit ≈ <b>8,6 Milliarden</b> Zellen auf einem Chip</div></div>
+        <div id="grid"></div>
+      </div>
+
+      <!-- Teil 4 -->
+      <div class="layer" id="t4">
+        <div id="t4cell">
+        <svg id="t4svg" viewBox="0 0 1000 380" aria-hidden="true">
+          <line id="wl" x1="110" y1="60" x2="520" y2="60"/>
+          <text class="wname w" x="500" y="48" text-anchor="end">Wortleitung</text>
+          <line id="bl" x1="170" y1="30" x2="170" y2="360"/>
+          <text class="wname b" x="182" y="352">Bitleitung</text>
+          <path class="wire" d="M170 210 H250 V200"/>
+          <line id="chan" x1="246" y1="196" x2="334" y2="196"/>
+          <line id="gate" x1="250" y1="180" x2="330" y2="180" stroke="var(--fg)" stroke-width="5"/>
+          <line id="gatew" x1="290" y1="180" x2="290" y2="60" class="wire"/>
+          <path class="wire" d="M330 200 V210 H420 V240"/>
+          <line x1="385" y1="240" x2="455" y2="240" stroke="var(--fg)" stroke-width="6"/>
+          <line x1="385" y1="256" x2="455" y2="256" stroke="var(--fg)" stroke-width="6"/>
+          <path class="wire" d="M420 256 V290 M398 290 H442 M405 298 H435 M413 306 H427"/>
+          <text class="wname" x="290" y="236" text-anchor="middle">Transistor</text>
+          <text class="wname" x="466" y="234">Kondensator</text>
+          <path id="conn" d="M464 256 C 530 256, 545 214, 596 214" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 5"/>
+        </svg>
+        <div id="qs"><i class="q qin"></i><i class="q qin"></i><i class="q qin"></i><i class="q qout"></i><i class="q qout"></i><i class="q qout"></i></div>
+        </div>
+        <div class="lab c4l" style="left:20px;top:10px">Eine RAM-Zelle (1 Bit)</div>
+        <div class="lab c4l" style="left:390px;top:10px">Zum Vergleich: Register in der CPU</div>
+        <div id="cmpR"><svg id="cmpsvg" viewBox="0 0 1000 380" aria-hidden="true"></svg><i class="pd" id="pdR"></i><i class="pd" id="pdM"></i></div>
+        <div class="note4"><div class="cntr r">Register-Zugriffe <b id="cR">0</b></div><div class="cntr m">RAM-Zugriffe <b id="cM">0</b></div>
+          <div class="tempo">Tempo <span id="tv">1×</span><input type="range" id="tempo" min="0.25" max="4" step="0.25" value="1" aria-label="Tempo der Punkte"></div></div>
+        <div class="ans4" style="left:20px;width:340px">1 Bit RAM: <b>1</b> Transistor + <b>1</b> Kondensator</div>
+        <div class="ans4 r" style="left:390px;width:360px">1 Bit Register: <b>6</b> oder mehr Transistoren</div>
+        <div class="clock">alle 64 ms auffrischen</div>
+        <div id="tank"><div id="fill"></div></div>
+        <div class="mark" style="top:206px">Hälfte</div>
+        <div class="tlab">Ladung im Kondensator</div>
+        <div id="bitv"></div>
+      </div>
+
+      <div id="fx"></div>
+    </div>
+  </div>
+  <div class="cap"><h1 id="ttl"></h1><p id="say"></p></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Zurück">←</button>
+    <span id="dots" style="display:flex;gap:6px"></span>
+    <button id="replay" aria-label="Teil neu starten" title="Teil neu starten (R)">↺</button>
+    <button id="next">Weiter →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), box = $('box'), fx = $('fx');
+
+  /* ---------- Zeichnungen ---------- */
+  // Teil 1: kleiner RAM-Riegel mit Aufkleber. Beim Laden bekommt jeder der 8 Chips ein anderes Byte
+  // (echt: jeder x8-Chip liefert 8 der 64 Bit, ein Programm verteilt sich also auf alle Chips). Chip 2 hält 42.
+  const BYTES1 = ['10110010', '01001101', '00101010', '11100101', '01110001', '10011100', '00011011', '11010110'];
+  (function () {
+    let h = '<path d="M4 6 H356 V96 H186 V88 H174 V96 H4 Z" fill="var(--pcb)" stroke="var(--pcb2)" stroke-width="2.5"/>';
+    for (let k = 0; k < 8; k++) {
+      const x = 14 + k * 43, b = BYTES1[k], dl = 'style="transition-delay:' + (0.8 + k * 0.13).toFixed(2) + 's"';
+      h += '<rect class="rc" id="rc' + k + '" x="' + x + '" y="14" width="35" height="44" rx="2"/>';
+      h += '<rect class="rfill" ' + dl + ' x="' + (x + 2) + '" y="16" width="31" height="21" rx="1.5"/>';
+      h += '<text class="rbits" ' + dl + ' x="' + (x + 17.5) + '" y="25" text-anchor="middle">' + b.slice(0, 4) + '</text><text class="rbits" ' + dl + ' x="' + (x + 17.5) + '" y="34" text-anchor="middle">' + b.slice(4) + '</text>';
+    }
+    h += '<rect x="120" y="64" width="120" height="16" rx="2" fill="#f4f5f8"/><text x="180" y="76" text-anchor="middle" font-family="IBM Plex Sans" font-size="11" font-weight="600" fill="#16181d">DDR4 · 8 GB</text>';
+    for (let x = 10; x < 352; x += 6) { if (x > 170 && x < 190) continue; h += '<rect x="' + x + '" y="86" width="3.5" height="10" fill="var(--gold)"/>'; }
+    $('t1stick').innerHTML = h;
+    // M.2-SSD (2280, 22 x 80 mm): schwarze Platine, Kontakte an der kurzen Seite links
+    // mit seitlich versetzter Kerbe (M-Key), Schraubenkerbe rechts, Aufkleber über den Chips
+    let s = '<path d="M2 10 H262 V30 A8 8 0 0 0 262 50 V70 H2 V60 H11 V53 H2 Z" fill="#1b1d23" stroke="#08090b" stroke-width="2"/>';
+    for (let y = 13; y < 68; y += 5) { if (y > 49 && y < 61) continue; s += '<rect x="3" y="' + y + '" width="10" height="3" fill="var(--gold)"/>'; }
+    s += '<rect x="17" y="18" width="4" height="6" fill="#8a8f99"/><rect x="17" y="30" width="4" height="6" fill="#8a8f99"/><rect x="17" y="44" width="4" height="6" fill="#8a8f99"/>';
+    s += '<rect x="28" y="15" width="214" height="50" rx="3" fill="#eceef2"/><rect x="28" y="15" width="10" height="50" rx="2" fill="#3c6fd1"/>';
+    s += '<text x="140" y="37" text-anchor="middle" font-family="IBM Plex Sans" font-size="13" font-weight="700" fill="#16181d">M.2 NVMe SSD</text>';
+    s += '<text x="140" y="55" text-anchor="middle" font-family="IBM Plex Sans" font-size="12" font-weight="600" fill="#4a4f5a">512 GB</text>';
+    $('t1ssd').innerHTML = s;
+    // Festplatte (HDD) von oben, offen: Scheibe, Spindel, Schreib-/Lesearm
+    let d = '<defs><radialGradient id="plat" cx="40%" cy="38%" r="70%"><stop offset="0" stop-color="#f4f6f9"/><stop offset="1" stop-color="#b8bec8"/></radialGradient></defs>';
+    d += '<rect x="2" y="2" width="116" height="80" rx="6" fill="#9aa1ab" stroke="#4a5160" stroke-width="2"/><rect x="6" y="6" width="108" height="72" rx="4" fill="#c4c9d0"/>';
+    [[8, 8], [112, 8], [8, 76], [112, 76]].forEach(([x, y]) => { d += '<circle cx="' + x + '" cy="' + y + '" r="1.8" fill="#5d6370"/>'; });
+    d += '<circle cx="46" cy="42" r="34" fill="url(#plat)" stroke="#7d8590" stroke-width="1.5"/><circle cx="46" cy="42" r="22" fill="none" stroke="#a9b0ba" stroke-width="0.8"/>';
+    d += '<path class="hddspin" d="M46 42 L46 11 A31 31 0 0 1 66 18.5 Z" fill="#fff" opacity="0.6"/>';
+    d += '<circle cx="46" cy="42" r="7" fill="#8a909c" stroke="#4a5160" stroke-width="1.5"/><circle cx="46" cy="42" r="2" fill="#4a5160"/>';
+    d += '<line x1="101" y1="66" x2="66" y2="27" stroke="#5d6370" stroke-width="5" stroke-linecap="round"/><rect x="61" y="22" width="9" height="6" rx="1" fill="#2b303b" transform="rotate(48 65.5 25)"/>';
+    d += '<circle cx="101" cy="66" r="8" fill="#4a5160"/><circle cx="101" cy="66" r="3" fill="#9aa1ab"/>';
+    $('t1hdd').innerHTML = d;
+  })();
+
+  // Teil 2: großer Riegel (vorne 8 Chips) + Rahmen
+  (function () {
+    let h = '<path d="M8 10 H852 V250 H442 V232 H418 V250 H8 Z" fill="var(--pcb)" stroke="var(--pcb2)" stroke-width="3"/>';
+    for (let i = 0; i < 40; i++) h += '<circle cx="' + (30 + (i * 97) % 800) + '" cy="' + (22 + (i * 53) % 40) + '" r="2" fill="#c9a227" opacity="0.6"/>';
+    for (let k = 0; k < 8; k++) {
+      const x = 30 + k * 102;
+      h += '<rect x="' + x + '" y="70" width="80" height="110" rx="3" fill="var(--chip)"/>';
+      h += '<text x="' + (x + 40) + '" y="118" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#8a909c">SEC</text><text x="' + (x + 40) + '" y="134" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#8a909c">K4A8G08</text>';
+      h += '<rect class="t2c" x="' + (x - 6) + '" y="64" width="92" height="122" rx="6" style="transition-delay:' + (k * 0.18) + 's"/>';
+    }
+    for (let x = 20; x < 846; x += 9) { if (x > 412 && x < 446) continue; h += '<rect x="' + x + '" y="218" width="5" height="32" fill="var(--gold)"/>'; }
+    h += '<rect class="t2pins" x="12" y="212" width="836" height="44" rx="6"/>';
+    $('t2stick').innerHTML = h;
+    // Foto-Overlays (Bildkoordinaten)
+    const pill = (x, y, s, o) => { const w = s.length * 17 + 30, x0 = o === 'start' ? x : o === 'end' ? x - w : x - w / 2;
+      return '<rect x="' + x0 + '" y="' + (y - 32) + '" width="' + w + '" height="44" rx="10" fill="rgba(20,22,28,.85)"/><text x="' + (x0 + w / 2) + '" y="' + y + '" font-family="IBM Plex Sans" font-size="30" font-weight="600" fill="#fff" text-anchor="middle">' + s + '</text>'; };
+    const CH = [[135, 240, 145, 210], [325, 235, 150, 210], [810, 222, 150, 216], [1015, 220, 150, 210]];
+    let o1 = CH.map(([x, y, w, hh], k) => '<g class="ov" data-n="' + (k + 1) + '"><rect x="' + (x - 6) + '" y="' + (y - 6) + '" width="' + (w + 12) + '" height="' + (hh + 12) + '" rx="8" fill="none" stroke="#ffd400" stroke-width="7"/>' + pill(x + w / 2, y - 20, '1 GB') + '</g>').join('');
+    o1 += '<g class="ov" data-n="5"><rect x="36" y="556" width="1222" height="52" rx="8" fill="none" stroke="#ffd400" stroke-width="7"/>' + pill(640, 536, 'Kontakte zum Mainboard') + '</g>';
+    $('ov1').innerHTML = o1;
+    const bx = (x, y, w) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="34" rx="6" fill="none" stroke="#ffd400" stroke-width="5"/>';
+    const ln = (x1, y1, x2, y2) => '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="#ffd400" stroke-width="5"/>';
+    let o2 = '<g class="ov" data-n="1">' + bx(316, 236, 42) + pill(40, 112, '8GB = Größe', 'start') + ln(160, 124, 330, 236) + '</g>';
+    o2 += '<g class="ov" data-n="2">' + bx(358, 236, 50) + pill(470, 112, 'x8 = 8 Bit pro Chip') + ln(450, 124, 385, 236) + '</g>';
+    o2 += '<g class="ov" data-n="3">' + bx(410, 236, 40) + pill(700, 112, 'PC4 = DDR4', 'start') + ln(760, 124, 435, 236) + '</g>';
+    o2 += '<g class="ov" data-n="4"><rect x="120" y="168" width="900" height="200" rx="10" fill="none" stroke="#ffd400" stroke-width="5" stroke-dasharray="16 10"/>' + pill(570, 418, 'darunter: die anderen 4 Chips') + '</g>';
+    $('ov2').innerHTML = o2;
+  })();
+
+  // Teil 3: Raster 8 Zeilen × 16 Spalten
+  (function () {
+    const R = 8, C = 16, s = 34; let h = '';
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) h += '<div class="gc' + (r === 3 && c === 7 ? ' hit' : '') + '" style="left:' + (c * s) + 'px;top:' + (r * s + 20) + 'px"></div>';
+    // wie auf der alten RAM-Einstieg-Seite: nur „Zeile 3 →“ und „Spalte 7 ↓“, keine Bit-Aufteilung
+    h += '<div class="glab" id="zlab" style="right:12px;top:' + (3 * s + 22) + 'px">Zeile 3 →</div>';
+    h += '<div class="glab" id="slab" style="left:' + (7 * s - 26) + 'px;top:-12px">Spalte 7 ↓</div>';
+    h += '<div class="hitlab" style="left:' + (2 * s) + 'px;top:' + (R * s + 22) + 'px">rot = diese Zelle (1 Bit) ist gemeint</div>';
+    h += '<div class="sweep" id="rowsw" style="left:-4px;top:' + (3 * s + 16) + 'px;width:' + (C * s + 4) + 'px;height:' + (s + 4) + 'px"></div>';
+    h += '<div class="sweep" id="colsw" style="left:' + (7 * s - 4) + 'px;top:16px;width:' + (s + 4) + 'px;height:' + (R * s + 4) + 'px"></div>';
+    $('grid').innerHTML = h;
+  })();
+
+  // Teil 4 rechts: CPU mit 16 Registern am Rechenwerk, RAM außerhalb (wie die alte RAM-Einstieg-Seite)
+  (function () {
+    const R = ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp', 'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15'];
+    const t = (x, y, s, o) => '<text x="' + x + '" y="' + y + '" text-anchor="middle" font-family="' + (o.mono ? 'JetBrains Mono' : 'IBM Plex Sans') + '" font-size="' + o.size + '" font-weight="' + (o.w || 400) + '" fill="' + (o.fill || 'var(--fg)') + '">' + s + '</text>';
+    // Register im Kreis um das Rechenwerk: alle gleich weit weg, also gleich lange Wege.
+    // So passt das Bild zur Wirklichkeit: Jeder Register-Zugriff dauert gleich lang (ein Takt).
+    const C = [570, 176], RR = 104, R0 = 42, R1 = 91;
+    const ang = k => (-90 + 11.25 + k * 22.5) * Math.PI / 180;
+    const pt = (r, k) => [(C[0] + r * Math.cos(ang(k))).toFixed(1), (C[1] + r * Math.sin(ang(k))).toFixed(1)];
+    let h = '<rect x="390" y="40" width="360" height="262" rx="14" fill="#fff" stroke="var(--fg)" stroke-width="3"/>' +
+      '<text x="406" y="66" font-family="IBM Plex Sans" font-size="16" font-weight="600" fill="var(--fg)">Prozessor (CPU)</text>';
+    R.forEach((r, k) => {
+      const [x, y] = pt(RR, k);
+      h += '<rect x="' + (x - 17) + '" y="' + (y - 11) + '" width="34" height="22" rx="4" fill="#efe9fb" stroke="var(--rip)" stroke-width="1.6"/>' + t(+x, +y + 4.5, r, { size: 11.5, w: 600, mono: true, fill: 'var(--rip)' });
+    });
+    h += '<circle cx="' + C[0] + '" cy="' + C[1] + '" r="' + R0 + '" fill="var(--soft)" stroke="var(--fg)" stroke-width="2.2"/>' + t(C[0], C[1] - 2, 'ALU', { size: 17, w: 600 }) + t(C[0], C[1] + 17, '&lt; 1 ns', { size: 13, w: 600, fill: 'var(--rip)' });
+    let tour = 'M' + pt(R0, 0).join(' ');
+    R.forEach((r, k) => { tour += ' L' + pt(R1, k).join(' ') + ' L' + pt(R0, k).join(' ') + ' A' + R0 + ' ' + R0 + ' 0 0 1 ' + pt(R0, (k + 1) % 16).join(' '); });
+    [166, 176, 186].forEach(y => { h += '<line x1="750" y1="' + y + '" x2="880" y2="' + y + '" stroke="var(--pin)" stroke-width="3"/>'; });
+    h += t(815, 155, '≈ 100 ns', { size: 15, w: 600, fill: 'var(--cand)' }) + t(815, 205, 'Leitungen', { size: 12.5, fill: 'var(--muted)' });
+    h += '<rect x="880" y="141" width="110" height="70" rx="10" fill="#dbe6fb" stroke="var(--cand)" stroke-width="2.5"/>' + t(935, 171, 'RAM', { size: 18, w: 600 }) + t(935, 193, '16 GB', { size: 13, fill: 'var(--muted)' });
+    $('cmpsvg').innerHTML = h;
+    $('pdR').style.offsetPath = "path('" + tour + "')";
+  })();
+
+  /* ---------- Zustand zeichnen ---------- */
+  // st: { L (Teil), f [Klassen auf der Bühne], rax, o1, o2 (Anzahl Overlays), lvl (Füllstand %), lt (Sekunden), bit, bytes {Adresse: Bits} }
+  function draw(st, instant) {
+    const wasDots = stage.classList.contains('dots');
+    stage.className = 'stage L' + st.L + ' ' + (st.f || []).join(' ') + (instant ? ' noanim' : '');
+    ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi'].forEach(r => { const e = $('r-' + r); e.textContent = r === 'rax' ? (st.rax || '') : ''; e.classList.toggle('hot', r === 'rax' && !!st.raxHot); });
+    document.querySelectorAll('#ov1 .ov').forEach(g => g.classList.toggle('on', +g.dataset.n <= (st.o1 || 0)));
+    document.querySelectorAll('#ov2 .ov').forEach(g => g.classList.toggle('on', +g.dataset.n <= (st.o2 || 0)));
+    const fl = $('fill'); fl.style.transitionDuration = (st.lt || 0.8) + 's'; fl.style.height = (st.lvl || 0) + '%';
+    $('bitv').innerHTML = (st.bit || '') + (st.bit ? '<small>' + (st.bit === '1' ? 'gespeichert' : st.bit === '0' ? 'gespeichert' : 'unklar') + '</small>' : '');
+    $('bitv').style.color = st.bit === '?' ? 'var(--warn)' : 'var(--fg)';
+    if (instant) { void stage.offsetWidth; stage.classList.remove('noanim'); }
+    if (stage.classList.contains('dots') && !wasDots) dotsT0 = true;
+  }
+
+  /* ---------- Teil 4: Punkte im echten Verhältnis, Zähler und Tempo ---------- */
+  // Beide Punkte laufen per CSS-Animation. playbackRate ändert das Tempo ohne Sprung.
+  // Zähler: aus der Laufzeit der Animation. 1 Register-Zugriff = 250 ms, 1 RAM-Zugriff = 25 000 ms (bei Tempo 1).
+  let rate = 1, dotsT0 = false;
+  $('tempo').addEventListener('input', e => {
+    rate = +e.target.value; $('tv').textContent = String(rate).replace('.', ',') + '×';
+    ['pdR', 'pdM'].forEach(id => $(id).getAnimations().forEach(a => { a.playbackRate = rate; }));
+  });
+  (function tick() {
+    if (stage.classList.contains('dots')) {
+      const isA = a => a.animationName !== undefined, aR = $('pdR').getAnimations().find(isA), aM = $('pdM').getAnimations().find(isA);
+      if (aR && aM) {
+        if (dotsT0) { aR.currentTime = 0; aM.currentTime = 0; dotsT0 = false; }
+        [aR, aM].forEach(a => { if (a.playbackRate !== rate) a.playbackRate = rate; });
+        const t = aM.currentTime || 0;
+        $('cR').textContent = Math.floor(t / 250); $('cM').textContent = Math.floor(t / 25000);
+      }
+    }
+    requestAnimationFrame(tick);
+  })();
+
+  /* ---------- Fliegende Werte ---------- */
+  function mid(el) { const a = stage.getBoundingClientRect(), b = el.getBoundingClientRect(), k = a.width / 1000; return [(b.left - a.left + b.width / 2) / k, (b.top - a.top + b.height / 2) / k]; }
+  function fly(from, to, txt, ms) {
+    const c = document.createElement('div'), a = mid($(from)), b = mid($(to));
+    c.className = 'fly'; c.textContent = txt;
+    c.style.left = a[0] + 'px'; c.style.top = a[1] + 'px'; c.style.transitionDuration = ms + 'ms';
+    fx.appendChild(c); void c.offsetWidth; c.style.left = b[0] + 'px'; c.style.top = b[1] + 'px';
+    later(ms + 30, () => c.remove());
+  }
+
+  /* ---------- Zustände ---------- */
+  const clone = o => JSON.parse(JSON.stringify(o));
+  function apply(st, p) {
+    const n = clone(st);
+    Object.entries(p).forEach(([k, v]) => {
+      if (k === 'add') v.forEach(c => { if (!n.f.includes(c)) n.f.push(c); });
+      else if (k === 'del') n.f = n.f.filter(c => !v.includes(c));
+      else if (k === 'bytes') n.bytes = Object.assign({}, n.bytes, v);
+      else n[k] = v;
+    });
+    return n;
+  }
+  const F = (from, to, txt, adv) => ({ fly: [from, to, txt], adv });
+  const SET = (p, ms) => ({ set: p, ms });
+
+  const S = [
+    { dot: '1', act: 'Teil 1 · Wo liegt was?', title: 'Register, RAM und SSD',
+      start: { L: 1, f: [], rax: '' },
+      beats: [
+        { say: 'Ein Computer speichert Daten an drei Orten. Links die <b>CPU</b> (der Prozessor) mit ihren <b>Registern</b>. In der Mitte der <b>RAM</b>, der Arbeitsspeicher. Rechts der dauerhafte Speicher: heute eine <b>SSD</b>, in älteren Rechnern eine <b>Festplatte</b> (HDD) mit drehender Scheibe.' },
+        { say: 'Ein Programm liegt als Datei auf der SSD. Wenn ihr es startet, kopiert das Betriebssystem es in den RAM. Dabei bekommt jeder der 8 Chips einen Teil, hier je ein Byte. Erst im RAM kann die CPU es benutzen.', ops: [
+          SET({ add: ['t1load'] }, 1)].concat(BYTES1.map((b, k) => F('t1file', 'rc' + k, b.slice(0, 4) + ' ' + b.slice(4), k < 7 ? 130 : undefined))) },
+        { say: 'Rechnen kann die CPU aber nur mit ihren Registern. Also holt sie sich jeden Wert erst aus dem RAM in ein Register.', ops: [
+          F('rc2', 'r-rax', '42'), SET({ rax: '42', raxHot: true }, 600)] },
+        { say: 'Im Chip stand das als Bits: 0010 1010 ist binär die <b>42</b>.' },
+        { say: 'Warum dieser Umweg? Wegen der Geschwindigkeit. Ein Register liegt direkt im Rechenwerk. Ein Zugriff dauert unter 1 ns (Nanosekunde, eine milliardstel Sekunde).', ops: [SET({ add: ['sp1'] }, 600)] },
+        { say: 'Ein Zugriff auf den RAM dauert rund 100 ns, also rund 100-mal so lange. Die Daten müssen über Leitungen auf dem Mainboard laufen.', ops: [SET({ add: ['sp2'] }, 700)] },
+        { say: 'Ein Zugriff auf die SSD dauert rund 100 µs (Mikrosekunde, eine millionstel Sekunde). Das ist noch einmal rund 1000-mal so lange wie beim RAM. Dafür ist sie groß und billig.', ops: [SET({ add: ['sp3'] }, 700)] },
+        { say: 'Eine Festplatte braucht sogar rund 10 ms (Millisekunde), 100-mal so lange wie die SSD: Ihr Arm muss sich erst an die richtige Stelle der Scheibe bewegen.', with: true, ops: [SET({ add: ['sp4'] }, 500)] },
+        { say: 'Und noch ein Unterschied: Was passiert, wenn der Strom weg ist?', ops: [SET({ add: ['pwrshow'] }, 500)] },
+        { say: 'RAM und Register sind <b>flüchtig</b>: Ohne Strom ist alles weg. SSD und Festplatte behalten ihre Daten. Darum muss ein Programm nach jedem Neustart wieder neu in den RAM geladen werden.', ops: [
+          SET({ add: ['t1off'], rax: '', raxHot: false }, 900)] },
+        { say: 'Übrigens: Ist der RAM voll, lagert das Betriebssystem Teile davon auf die SSD aus (<b>Swap</b>). Die SSD ist aber 1000-mal langsamer, darum hängt der Rechner dann. Auf dem Mac sieht man das in der Aktivitätsanzeige unter „Speicherdruck“.' }
+      ] },
+
+    { dot: '2', act: 'Teil 2 · Der RAM-Riegel', title: 'So sieht RAM aus',
+      start: { L: 2, f: [] },
+      beats: [
+        { say: 'So sieht ein <b>RAM-Riegel</b> aus: eine kleine grüne Platine. Die Fachleute sagen auch RAM-Modul.' },
+        { say: 'Die schwarzen Kästchen sind die <b>Speicherchips</b>. In ihnen liegen die Daten. Hier sind es 8 Stück.', ops: [SET({ add: ['t2chips'] }, 1700)] },
+        { say: 'Unten sind die <b>goldenen Kontakte</b>. Damit steckt der Riegel im Mainboard. Über sie laufen alle Daten zur CPU. Die Kerbe sorgt dafür, dass man ihn nicht falsch herum einsteckt.', ops: [SET({ add: ['t2pin'] }, 700)] },
+        { say: 'Jetzt ein echter Riegel, aus einem alten Laptop. Auf dieser Seite sieht man 4 Chips.', with: true, ops: [SET({ add: ['t2photo', 't2p1'] }, 900)] },
+        { say: 'Jeder Chip speichert <b>1 GB</b>.', ops: [SET({ o1: 1 }, 350), SET({ o1: 2 }, 350), SET({ o1: 3 }, 350), SET({ o1: 4 }, 500)] },
+        { say: 'Und unten wieder die Kontakte, mit der Kerbe in der Mitte.', ops: [SET({ o1: 5 }, 600)] },
+        { say: 'Die andere Seite mit dem Aufkleber. Was steht da drauf?', with: true, ops: [SET({ del: ['t2p1'], add: ['t2p2'] }, 900)] },
+        { say: '<b>8GB</b>: So groß ist der ganze Riegel.', ops: [SET({ o2: 1 }, 600)] },
+        { say: '<b>x8</b>: Jeder Chip liefert 8 Bit auf einmal. 8 Chips × 8 Bit = 64 Bit. So breit ist die Datenleitung zum Prozessor.', ops: [SET({ o2: 2 }, 600)] },
+        { say: '<b>PC4</b> heißt DDR4, die Generation des RAM. Neue Laptops haben DDR5.', ops: [SET({ o2: 3 }, 600)] },
+        { say: 'Unter dem Aufkleber liegen die anderen 4 Chips. Zusammen also 8 Chips × 1 GB = <b>8 GB</b>.', ops: [SET({ o2: 4 }, 600)] },
+        { say: 'Bei MacBooks mit Apple-Chip sitzt der RAM direkt neben dem Prozessor im selben Gehäuse. Kürzere Wege, schneller, aber man kann ihn nicht austauschen.' },
+        { say: 'Oben könnt ihr jetzt frei wechseln: die Zeichnung, und mein echter Laptop-RAM von vorne und von hinten.', tabs: true }
+      ] },
+
+    { dot: '3', act: 'Teil 3 · Im Chip', title: 'Im Chip: Zeilen und Spalten',
+      start: { L: 3, f: [] },
+      beats: [
+        { say: 'Im Chip liegen winzige <b>Zellen</b> in Zeilen und Spalten, wie auf einem Schachbrett. Jede Zelle speichert genau <b>1 Bit</b>: 0 oder 1.' },
+        { say: 'Die CPU schickt eine <b>Adresse</b>. Daraus liest der Chip zwei Angaben: welche <b>Zeile</b> und welche <b>Spalte</b>. Wie beim Schachbrett.', ops: [SET({ add: ['a1'] }, 700)] },
+        { say: 'Zuerst wird die ganze Zeile 3 ausgewählt.', ops: [SET({ add: ['a3'] }, 1000)] },
+        { say: 'Dann die Spalte 7.', ops: [SET({ add: ['a4'] }, 1000)] },
+        { say: 'Wo sich beide kreuzen, liegt genau eine Zelle. Die wird gelesen oder geschrieben.', ops: [SET({ add: ['a5'] }, 600)] },
+        { say: 'Vereinfacht: Ein echter Chip hat noch mehrere Bänke, und ein x8-Chip liefert pro Adresse gleich 8 Bit auf einmal. Das Prinzip „Zeile, dann Spalte“ stimmt aber.' },
+        { say: 'Frage: Wie viele Zellen hat ein Chip mit 1 GB ungefähr?', ops: [SET({ add: ['cnt1'] }, 600)] },
+        { say: 'Rund <b>8,6 Milliarden</b>. Und das auf einem Chip so groß wie ein Fingernagel.', ops: [SET({ add: ['cnt2'] }, 1200)] }
+      ] },
+
+    { dot: '4', act: 'Teil 4 · Eine Zelle', title: 'Ein Bit: Transistor und Kondensator',
+      start: { L: 4, f: [], lvl: 0, lt: 0.8, bit: '0' },
+      beats: [
+        { say: 'Eine Zelle besteht nur aus zwei Bauteilen. Der <b>Kondensator</b> ist ein winziger Eimer für Ladung: voll heißt 1, leer heißt 0. Rechts seht ihr den Eimer groß.' },
+        { say: 'Der <b>Transistor</b> ist ein Schalter. Er verbindet den Kondensator mit der Bitleitung, aber nur, wenn die <b>Wortleitung</b> Strom hat.' },
+        { say: 'Eine 1 schreiben: Die Wortleitung schaltet den Transistor ein. Über die Bitleitung fließt Ladung in den Kondensator.', ops: [
+          SET({ add: ['wlon'] }, 600), SET({ add: ['blon', 'flow'] }, 500), SET({ lvl: 90, lt: 1.6 }, 1700), SET({ bit: '1', del: ['flow', 'blon'] }, 500), SET({ del: ['wlon'] }, 500)] },
+        { say: 'Jetzt ist der Schalter wieder zu. Das Problem: Der Eimer ist <b>undicht</b>. Die Ladung sickert langsam weg.', ops: [
+          SET({ add: ['leak'], lvl: 45, lt: 3.2 }, 3300), SET({ del: ['leak'] }, 300)] },
+        { say: 'Unter der Hälfte wäre die 1 nicht mehr sicher zu erkennen. Darum liest der Chip jede Zelle <b>alle 64 ms</b> und füllt sie wieder auf. Das heißt <b>Refresh</b>.', ops: [
+          SET({ add: ['refr', 'wlon'] }, 500), SET({ add: ['blon', 'flow'] }, 400), SET({ lvl: 90, lt: 1.2 }, 1300), SET({ del: ['flow', 'blon', 'wlon'] }, 600)] },
+        { say: 'Weil ständig nachgefüllt werden muss, heißt dieser Speicher <b>DRAM</b>: <b>dynamischer</b> RAM.' },
+        { say: 'Und ohne Strom gibt es keinen Refresh. Die Ladung ist weg, das Bit ist verloren. Deshalb ist RAM flüchtig.', ops: [
+          SET({ del: ['refr'], add: ['leak'], lvl: 0, lt: 2.4 }, 2400), SET({ del: ['leak'], bit: '?' }, 500)] },
+        { say: 'Zum Vergleich: Links unsere RAM-Zelle, rechts die CPU. Ihre 16 Register sitzen direkt am <b>Rechenwerk</b> (ALU). Der RAM liegt außerhalb und ist über Leitungen verbunden.', with: true, ops: [SET({ add: ['cmp'] }, 1100)] },
+        { say: 'Lila: ein Wert vom Register ins Rechenwerk, unter 1 ns. Blau: ein Wert aus dem RAM, rund 100 ns, weil der Weg viel länger ist. Das Verhältnis stimmt hier: Während Blau einmal hin und zurück fährt, schafft Lila <b>100</b> Zugriffe. Rechts könnt ihr das Tempo ändern.', with: true, ops: [SET({ add: ['dots'] }, 400)] },
+        { say: 'Frage: Register sind so viel schneller. Warum bauen wir dann nicht einfach 16 GB Register?' },
+        { say: 'Ein Register-Bit braucht 6 oder mehr Transistoren, eine RAM-Zelle nur 1 Transistor und 1 Kondensator. 16 GB Register wären viel größer, teurer und heißer. Und je größer ein Speicher, desto länger die Wege.', ops: [SET({ add: ['cnt4'] }, 1000)] },
+        { say: 'Darum gibt es eine <b>Speicherhierarchie</b>: wenig, aber sehr schnell (Register, Cache), viel und schnell genug (RAM), sehr viel und langsam (SSD).' }
+      ] },
+  ];
+
+  /* ---------- Schritte bauen: erst Text, dann Animation ---------- */
+  S.forEach(sc => {
+    let st = clone(sc.start);
+    const steps = [];
+    sc.beats.forEach(b => {
+      if (b.ops) {
+        // with: Bild erscheint zusammen mit dem Text (wenn der Text es schon beschreibt)
+        if (!b.with) steps.push({ say: b.say, st: clone(st) });
+        let nx = clone(st); b.ops.forEach(o => { if (o.set) nx = apply(nx, o.set); });
+        steps.push({ say: b.say, st: nx, play: true, with: !!b.with, ops: b.ops, from: clone(st) });
+        st = nx;
+      } else steps.push({ say: b.say, st: clone(st), tabs: !!b.tabs });
+    });
+    sc.steps = steps;
+  });
+
+  /* ---------- Abspielen ---------- */
+  let timers = [], busy = false, target = null;
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const stop = () => { timers.forEach(clearTimeout); timers = []; fx.innerHTML = ''; };
+  function finish() { stop(); busy = false; draw(target, true); ui(); }
+  function play(step) {
+    busy = true; target = step.st; ui();
+    let cur = step.from, t = 0;
+    draw(cur, false);
+    step.ops.forEach(o => {
+      if (o.fly) { const [a, b, txt] = o.fly, d = 800; later(t, () => fly(a, b, txt, d)); t += o.adv != null ? o.adv : d + 40; }
+      else if (o.set) { const p = o.set; later(t, () => { cur = apply(cur, p); draw(cur, false); }); t += o.ms || 450; }
+    });
+    later(t + 100, () => { busy = false; ui(); });
+  }
+
+  let cur = 0, k = 0, steps = [];
+  const dots = $('dots');
+  S.forEach((s, i) => { const d = document.createElement('button'); d.className = 'dot'; d.textContent = s.dot; d.title = s.title; d.onclick = () => show(i); dots.appendChild(d); });
+  function ui() {
+    const nx = steps[k + 1];
+    $('next').textContent = busy ? 'läuft …' : nx && nx.play && !nx.with ? 'Zeigen →' : (!nx && cur < S.length - 1 ? 'Nächster Teil →' : 'Weiter →');
+    $('next').classList.toggle('play', !busy && !!(nx && nx.play && !nx.with));
+    $('next').disabled = !busy && !nx && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && k === 0;
+    $('cnt').textContent = 'Schritt ' + (k + 1) + ' / ' + steps.length;
+  }
+  // drei Ansichten für die Tabs am Ende von Teil 2 (alles beschriftet)
+  const VIEWS = [{ L: 2, f: ['t2chips', 't2pin'] }, { L: 2, f: ['t2photo', 't2p1'], o1: 5 }, { L: 2, f: ['t2photo', 't2p2'], o2: 4 }];
+  const tabs = $('tabs');
+  function pressTab(v) { [...tabs.children].forEach(b => b.setAttribute('aria-pressed', +b.dataset.v === v ? 'true' : 'false')); }
+  [...tabs.children].forEach(b => b.onclick = () => { stop(); busy = false; draw(VIEWS[+b.dataset.v], false); pressTab(+b.dataset.v); ui(); b.blur(); });
+  function go(j, anim) {
+    const s = steps[j]; k = j;
+    tabs.hidden = !s.tabs; pressTab(2);
+    $('say').innerHTML = s.say;
+    stop(); busy = false; target = s.st;
+    if (anim && s.play) play(s); else draw(s.st, true);
+    ui();
+  }
+  function show(i, last) {
+    stop(); busy = false; cur = i; steps = S[i].steps; tabs.hidden = true;
+    $('act').textContent = S[i].act; $('ttl').textContent = S[i].title;
+    [...dots.children].forEach((d, n) => { if (n === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    go(last ? steps.length - 1 : 0, false);
+  }
+  function next() {
+    if (busy) return finish();
+    if (k < steps.length - 1) go(k + 1, true); else if (cur < S.length - 1) show(cur + 1);
+  }
+  function prev() {
+    if (busy) finish();
+    if (k > 0) go(k - 1, false); else if (cur > 0) show(cur - 1, true);
+  }
+  $('next').onclick = next; $('prev').onclick = prev; $('replay').onclick = () => show(cur);
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target && e.target.tagName === 'INPUT') return;   // Tempo-Regler bedienen, ohne weiterzuschalten
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'r' || e.key === 'R') show(cur);
+  });
+
+  function fit() {
+    const w = box.clientWidth, s = Math.max(0.5, Math.min(w / 1000, (window.innerHeight - 250) / 380, 1.6));
+    stage.style.transform = 'scale(' + s + ')'; stage.style.left = (w - 1000 * s) / 2 + 'px'; box.style.height = 380 * s + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.__go = (i, j) => { show(i); if (j) go(Math.min(j, steps.length - 1), false); };
+  fit(); show(0);
+})();
+</script>
+</body>
+</html>

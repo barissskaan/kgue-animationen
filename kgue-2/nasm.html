@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGÜ 2 · NASM-Grundlagen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Wie die KGÜ-5-Seiten und KGÜ-2_Stack.html: bewusst nur hell (Beamer). Bühne 1000×380, darunter Titel und Text.
+   Regel: erst Text, Animation erst nach Klick. Keine Emoji.
+   Fünf Teile, jeder mit eigener Ebene (#L-p, #L-r, #L-s, #L-t, #L-j). Klassen haben pro Ebene ein eigenes Präfix (p-, r-, s-, t-, j-). */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f1f2f5;
+  --warn: #c2410c; --hl: #fff1a8; --ptr: #ffd400; --cand: #2f5fb8; --rip: #7a4fd0; --ok: #4d7c0f;
+  --chip: #2b303b; --chip2: #4a5163; --pin: #8a909c;
+  --pcb: #2e6b3d; --pcb2: #1f4d2b; --gold: #c9a227;
+  --main: #e3ecfb; --main-b: #2f5fb8; --quad: #e4f2d6; --quad-b: #4d7c0f;
+  --ret: #fde8d7; --ret-b: #c2410c; --save: #dff1f4; --save-b: #0e7490;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 10px 16px 10px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 24px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.top .act { color: var(--fg); }
+/* Legende oben: Gelb = eben passiert, Lila (rip) = passiert als Nächstes */
+.legend { display: flex; align-items: center; gap: 14px; font-size: 18px; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--fg); }
+.legend > span { display: inline-flex; align-items: center; gap: 9px; padding: 3px 12px; border: 2px solid var(--fg); border-radius: 9px; background: #fff; }
+.legend .sw { width: 34px; height: 20px; background: var(--hl); border: 2px solid #e0c200; border-radius: 4px; }
+.legend .tri { width: 0; height: 0; border-left: 17px solid var(--rip); border-top: 10px solid transparent; border-bottom: 10px solid transparent; }
+.top:has(.legend:not([hidden])) { height: 40px; align-items: center; }
+.legend .rp { color: var(--rip); }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--cand); outline-offset: 2px; }
+code, .mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 0 0; font-variant-ligatures: none; }
+.stage.noanim, .stage.noanim * { transition: none !important; animation: none !important; }
+.layer { position: absolute; inset: 0; transition: opacity 0.4s; }
+.layer.off { opacity: 0; pointer-events: none; visibility: hidden; }
+.lab { position: absolute; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.flash { animation: flash 0.5s ease-out; }
+@keyframes flash { from { opacity: 0; transform: translateY(-5px); } }
+.fade { transition: opacity 0.45s, transform 0.45s; }
+.gone { opacity: 0; }
+
+/* ---------- gemeinsam: CPU-Chip, ALU, RAM-Riegel, Code ---------- */
+.cpu { position: absolute; background: var(--chip); border: 3px solid var(--fg); border-radius: 16px; }
+.cpu::before { content: ""; position: absolute; inset: 8px; border: 1.5px solid #555c6c; border-radius: 10px; pointer-events: none; }
+.cpu .name { position: absolute; left: 16px; top: 12px; color: #fff; font-family: var(--font-mono); font-weight: 600; font-size: 15px; letter-spacing: 0.05em; }
+.pin { position: absolute; background: repeating-linear-gradient(var(--dir, 0deg), var(--pin) 0 7px, transparent 7px 17px); }
+.pin.l, .pin.r { top: 26px; bottom: 26px; width: 11px; }
+.pin.l { left: -14px; } .pin.r { right: -14px; }
+.pin.t, .pin.b { left: 26px; right: 26px; height: 11px; --dir: 90deg; }
+.pin.t { top: -14px; } .pin.b { bottom: -14px; }
+.reg { position: absolute; display: flex; align-items: center; height: 36px; }
+.reg .n { width: 46px; font-family: var(--font-mono); font-weight: 600; font-size: 15px; color: var(--ptr); }
+.reg .n.rip { color: #c9b3ff; }
+.reg .v { flex: 1; height: 34px; border-radius: 7px; background: #fff; border: 2px solid var(--pin); font-family: var(--font-mono); font-weight: 600; font-size: 17px; line-height: 30px; text-align: right; padding: 0 9px; transition: background 0.35s, border-color 0.35s; white-space: nowrap; overflow: hidden; }
+.reg .v.hot { background: var(--ptr); border-color: var(--fg); }
+.alu { position: absolute; width: 170px; height: 68px; }
+.alu svg { position: absolute; inset: 0; overflow: visible; }
+.alu b { position: absolute; left: 0; right: 0; top: 42px; text-align: center; font-family: var(--font-mono); font-size: 15px; color: #fff; white-space: nowrap; }
+.alu small { position: absolute; left: 0; right: 0; top: 18px; text-align: center; font-family: var(--font-mono); font-size: 16px; letter-spacing: 0.1em; color: #e1e4ea; font-weight: 600; }
+.alu.on polygon { fill: #6b5a1a; stroke: var(--ptr); }
+.alu polygon { transition: fill 0.35s, stroke 0.35s; }
+.bus { position: absolute; height: 22px; display: flex; flex-direction: column; justify-content: space-between; }
+.bus i { display: block; height: 3px; background: var(--pin); border-radius: 2px; }
+.stick { position: absolute; overflow: visible; }
+.codebox { position: absolute; border: 2px solid var(--fg); border-radius: 12px; background: #fff; overflow: hidden; }
+.codebox .hd { height: 30px; border-bottom: 2px solid var(--fg); background: var(--soft); padding: 0 12px; display: flex; align-items: center; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.ln { position: relative; height: 21px; line-height: 21px; padding-left: 30px; font-family: var(--font-mono); font-size: 15.5px; white-space: pre; transition: background 0.35s, opacity 0.4s; }
+.ln.on, .ln.hot { background: var(--hl); }
+.ln .cm { color: var(--muted); }
+.ln .kw { color: var(--rip); font-weight: 600; }
+.rarrow { position: absolute; left: 6px; width: 0; height: 0; border-left: 13px solid var(--rip); border-top: 7.5px solid transparent; border-bottom: 7.5px solid transparent; transition: top 0.45s, opacity 0.3s; }
+
+/* fliegende Werte */
+#fx { position: absolute; inset: 0; pointer-events: none; }
+.fly { position: absolute; transform: translate(-50%, -50%); background: var(--ptr); border: 2px solid var(--fg); border-radius: 8px; padding: 2px 9px; font-family: var(--font-mono); font-weight: 600; font-size: 16px; white-space: nowrap; transition-property: left, top; transition-timing-function: ease-in-out; z-index: 9; box-shadow: 0 3px 8px rgba(0,0,0,0.25); }
+.fly.adrc { background: #ece4ff; border-color: var(--rip); }
+.fly.doc { background: #fff; }
+
+/* ---------- Teil 1: Pipeline ---------- */
+.p-cmd { position: absolute; left: 10px; top: 6px; width: 980px; height: 74px; background: #16181d; border-radius: 10px; padding: 7px 16px; }
+.p-set { position: absolute; left: 16px; top: 7px; right: 16px; transition: opacity 0.45s; }
+.p-line { height: 30px; line-height: 30px; font-family: var(--font-mono); font-size: 17px; color: #e8eaee; white-space: pre; transition: opacity 0.45s; }
+.p-line .pr { color: #7ee787; }
+.p-tk { border-radius: 4px; padding: 1px 2px; transition: background 0.35s, color 0.35s; }
+.p-tk.hot { background: var(--ptr); color: var(--fg); }
+.p-note { position: absolute; top: 84px; max-width: 520px; background: #fff; border: 2px solid var(--fg); border-radius: 8px; padding: 3px 10px; font-size: 16px; line-height: 1.3; white-space: nowrap; transition: opacity 0.35s, left 0.4s; }
+.p-note b { font-family: var(--font-mono); }
+.p-note::before { content: ""; position: absolute; left: 14px; top: -9px; width: 12px; height: 12px; background: #fff; border-left: 2px solid var(--fg); border-top: 2px solid var(--fg); transform: rotate(45deg); }
+.p-doc { position: absolute; top: 132px; width: 160px; height: 184px; border: 2.5px solid var(--fg); border-radius: 6px 24px 6px 6px; background: #fff; padding: 10px 10px 0; overflow: hidden; transition: opacity 0.5s, transform 0.5s, border-color 0.4s; }
+.p-doc.gone { opacity: 0.12; transform: scale(0.94); }
+.p-doc .r { font-family: var(--font-mono); font-size: 12.5px; line-height: 19px; white-space: pre; }
+.p-doc .r.c { color: var(--muted); }
+.p-doc .gap { display: inline-block; border: 2px dashed var(--warn); color: var(--warn); border-radius: 3px; padding: 0 2px; line-height: 14px; transition: background 0.4s, border-color 0.4s, color 0.4s; }
+.p-doc .gap.hot { background: var(--ret); }
+.p-doc .gap.fill { border: 2px solid var(--ok); color: var(--ok); background: var(--quad); }
+.p-fn { position: absolute; top: 322px; width: 160px; text-align: center; font-family: var(--font-mono); font-weight: 600; font-size: 16px; transition: opacity 0.5s; }
+.p-tool { position: absolute; top: 190px; width: 120px; height: 72px; border: 2.5px solid var(--fg); border-radius: 12px; background: var(--soft); text-align: center; padding-top: 8px; transition: background 0.35s, box-shadow 0.35s; }
+.p-tool b { display: block; font-family: var(--font-mono); font-size: 20px; }
+.p-tool span { font-size: 13.5px; color: var(--muted); }
+.p-tool.hot { background: var(--ptr); box-shadow: 0 0 0 5px rgba(255,212,0,0.35); }
+.p-lib { position: absolute; left: 600px; top: 294px; width: 96px; height: 76px; border: 2px solid var(--fg); border-radius: 5px 16px 5px 5px; background: #fff; text-align: center; padding-top: 6px; transition: opacity 0.5s; }
+.p-lib b { display: block; font-family: var(--font-mono); font-size: 15px; }
+.p-lib span { display: inline-block; margin-top: 4px; font-family: var(--font-mono); font-size: 13px; border: 2px solid var(--ok); background: var(--quad); border-radius: 4px; padding: 0 5px; }
+.p-run { position: absolute; right: 10px; bottom: 10px; }
+
+/* ---------- Teil 2: Register ---------- */
+.r-slot { position: absolute; width: 124px; height: 30px; border-radius: 6px; background: var(--chip2); border: 2px solid var(--pin); color: #fff; font-family: var(--font-mono); font-weight: 600; font-size: 16px; line-height: 26px; text-align: center; transition: background 0.35s, color 0.35s, border-color 0.35s; }
+.r-slot.hot { background: var(--ptr); color: var(--fg); border-color: var(--fg); }
+.r-slot.rip { color: #c9b3ff; }
+.r-slot.rip.hot { color: var(--fg); }
+.r-badge { position: absolute; right: -9px; top: -9px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: var(--save-b); color: #fff; font-size: 13px; line-height: 22px; text-align: center; transition: opacity 0.35s, transform 0.35s; }
+.r-badge.gone { transform: scale(0.4); }
+.r-ins { position: absolute; left: 390px; top: 16px; width: 590px; height: 48px; border: 2px solid var(--fg); border-radius: 10px; background: var(--soft); font-family: var(--font-mono); font-size: 22px; font-weight: 600; line-height: 44px; padding: 0 16px; transition: opacity 0.4s; }
+.r-bnum { position: absolute; top: 102px; width: 68px; text-align: center; font-size: 12.5px; color: var(--muted); font-weight: 600; letter-spacing: 0.05em; transition: opacity 0.4s; }
+.r-byte { position: absolute; top: 122px; width: 68px; height: 60px; border: 2.5px solid var(--fg); background: #fff; font-family: var(--font-mono); font-weight: 600; font-size: 24px; line-height: 55px; text-align: center; transition: background 0.4s, opacity 0.4s, transform 0.4s, color 0.4s; }
+.r-byte.gone { transform: translateY(-10px); }
+.r-byte.hot { background: var(--ptr); }
+.r-byte.warn { background: var(--ret); color: var(--warn); }
+.r-brk { position: absolute; height: 26px; border: 2.5px solid var(--fg); border-top: 0; border-radius: 0 0 8px 8px; transform-origin: right center; transition: transform 0.5s, opacity 0.4s; }
+.r-brk.gone { transform: scaleX(0.05); }
+.r-brk span { position: absolute; left: 8px; top: 4px; font-family: var(--font-mono); font-weight: 600; font-size: 16px; white-space: nowrap; }
+.r-brk small { font-family: var(--font-body); font-weight: 400; font-size: 13.5px; color: var(--muted); }
+.r-val { position: absolute; left: 390px; top: 336px; font-family: var(--font-mono); font-size: 21px; font-weight: 600; transition: opacity 0.4s; }
+
+/* ---------- Teil 3: Größen ---------- */
+.s-row { position: absolute; left: 14px; height: 64px; transition: opacity 0.45s, transform 0.45s; }
+.s-row.gone { transform: translateX(-14px); }
+.s-dir { position: absolute; left: 0; top: 2px; width: 50px; font-family: var(--font-mono); font-weight: 600; font-size: 21px; }
+.s-box { position: absolute; top: 0; width: 32px; height: 32px; border: 2.5px solid var(--fg); background: var(--main); }
+.s-txt { position: absolute; left: 60px; top: 36px; font-size: 15px; color: var(--muted); white-space: nowrap; }
+.s-txt b { color: var(--fg); }
+/* .bss-Schritt: die Namen wechseln nur für diesen Schritt von DB … auf RESB …, danach wieder zurück */
+.s-dir, .s-hd1 { transition: opacity 0.4s; }
+.s-res, .s-hd2 { opacity: 0; transition: opacity 0.4s; }
+.s-res { position: absolute; left: 0; top: 2px; width: 58px; font-family: var(--font-mono); font-weight: 600; font-size: 19px; color: var(--rip); }
+.res .s-dir, .res .s-hd1 { opacity: 0; } .res .s-res, .res .s-hd2 { opacity: 1; }
+.s-hd2 { color: var(--rip); }
+.s-txt .mono { border-radius: 4px; padding: 0 3px; transition: background 0.4s, color 0.4s; }
+.kwhl .s-txt .mono { background: var(--ptr); color: var(--fg); font-weight: 600; }
+.s-msg { position: absolute; left: 14px; top: 328px; display: flex; align-items: center; gap: 4px; }
+.s-msg code { font-family: var(--font-mono); font-size: 15px; font-weight: 600; margin-right: 8px; white-space: pre; opacity: 0; transition: opacity 0.4s; }
+.s-mb { width: 34px; height: 34px; border: 2.5px solid var(--fg); background: var(--main); font-family: var(--font-mono); font-size: 16px; font-weight: 600; line-height: 29px; text-align: center; opacity: 0; transform: translateY(-8px); transition: opacity 0.35s, transform 0.35s; }
+.msg .s-msg code, .msg .s-mb { opacity: 1; transform: none; }
+.s-c { position: absolute; left: 380px; top: 2px; font-family: var(--font-mono); font-size: 18px; font-weight: 600; }
+.s-cell { position: absolute; left: 580px; width: 150px; height: 26px; border: 2px solid var(--line); background: #fff; font-family: var(--font-mono); font-size: 15px; font-weight: 600; line-height: 22px; text-align: center; transition: background 0.4s, border-color 0.4s, box-shadow 0.35s; }
+.s-cell.v { background: var(--main); border-color: var(--main-b); }
+.s-cell.hot { box-shadow: inset 0 0 0 3px var(--ptr); }
+.s-cell.read { box-shadow: inset 0 0 0 3px var(--cand); }
+.s-adr { position: absolute; left: 514px; width: 60px; text-align: right; font-family: var(--font-mono); font-size: 13.5px; color: var(--muted); transition: color 0.3s, background 0.3s; }
+.s-adr.hot { color: var(--fg); background: #ece4ff; border-radius: 4px; }
+.s-tag { position: absolute; left: 738px; font-family: var(--font-mono); font-weight: 600; font-size: 16px; color: var(--rip); transition: opacity 0.4s; white-space: nowrap; }
+
+/* ---------- Teil 4: Sections ---------- */
+.t-reg { position: absolute; left: 600px; width: 330px; border: 2.5px solid var(--fg); display: flex; align-items: center; gap: 10px; padding: 0 10px; transition: opacity 0.45s, background 0.4s, box-shadow 0.35s; }
+.t-reg + .t-reg { border-top-width: 0; }
+.t-reg b { font-family: var(--font-mono); font-size: 16px; width: 72px; flex: none; }
+.t-reg span { font-family: var(--font-mono); font-size: 14px; white-space: nowrap; overflow: hidden; }
+.t-reg em { font-style: normal; font-size: 13px; color: var(--muted); }
+.t-reg.hot { box-shadow: inset 0 0 0 4px var(--ptr); }
+.t-reg.free { border-style: dashed; background: #fff; }
+.t-side { position: absolute; left: 470px; width: 120px; text-align: right; font-size: 13px; color: var(--muted); }
+
+/* ---------- Teil 5: Sprünge ---------- */
+#L-j .ln { height: 19px; line-height: 19px; font-size: 15px; }
+#L-j .codebox .hd { height: 26px; }
+.j-flag { position: absolute; width: 86px; height: 50px; border-radius: 7px; background: #fff; border: 2px solid var(--pin); text-align: center; transition: background 0.35s, border-color 0.35s; }
+.j-flag small { display: block; white-space: nowrap; font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-weight: 600; line-height: 18px; }
+.j-flag b { display: block; font-family: var(--font-mono); font-size: 20px; line-height: 26px; }
+.j-flag.hot { background: var(--ptr); border-color: var(--fg); }
+.j-flag.chk { box-shadow: 0 0 0 4px var(--rip); border-color: var(--rip); }
+/* weitere Flags: es gibt mehr als ZF und SF, hier nur angedeutet */
+.j-more { position: absolute; width: 32px; height: 22px; border: 1.5px dashed #8a909c; border-radius: 5px; color: #9aa0aa; font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; line-height: 19px; text-align: center; }
+/* Adresse (letzte 3 Stellen) links neben jedem Befehl */
+.jadr { position: absolute; left: 27px; top: 0; font-family: var(--font-mono); font-size: 12px; color: #9aa0aa; transition: color 0.3s; }
+.jadr.cur { color: var(--rip); font-weight: 600; }
+/* rip zeigt auf den Befehl: lila Pfeil vom rip-Register zur Zeile */
+#j-ptr { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; overflow: visible; pointer-events: none; transition: opacity 0.3s; }
+#j-ptrp { fill: none; stroke: var(--rip); stroke-width: 3; stroke-linejoin: round; }
+/* Pfeilspitzen: gefüllte Dreiecke (vorher hat die Linien-Regel sie hohl gemacht) */
+#j-arc marker path, #j-ptr marker path { fill: var(--rip); stroke: none; }
+.jadr.src { color: var(--rip); font-weight: 600; background: #ece4ff; border-radius: 3px; }
+/* CPU prüft das Flag: Puls am SF-Kästchen, dann Entscheidung über der ALU */
+.j-flag.chk { animation: jpulse 0.7s ease-in-out 2; }
+@keyframes jpulse { 50% { transform: scale(1.12); } }
+.fly.q { background: #ece4ff; border-color: var(--rip); color: var(--rip); }
+.j-verd { position: absolute; left: 14px; top: 252px; width: 198px; height: 70px; border-radius: 12px; background: #fff; border: 3px solid var(--fg); text-align: center; opacity: 0; transform: scale(0.6); transition: opacity 0.35s, transform 0.35s cubic-bezier(.3,1.6,.5,1); }
+.j-verd.on { opacity: 1; transform: none; }
+.j-verd b { display: block; font-family: var(--font-mono); font-size: 19px; line-height: 30px; margin-top: 3px; }
+.j-verd span { display: block; font-size: 18px; font-weight: 600; line-height: 26px; }
+.j-verd.no { border-color: var(--warn); } .j-verd.no span { color: var(--warn); }
+.j-verd.yes { border-color: #3f7d1c; } .j-verd.yes span { color: #3f7d1c; }
+.j-row { position: absolute; left: 650px; width: 340px; height: 36px; border: 2px solid var(--line); background: #fff; display: flex; align-items: center; gap: 12px; padding: 0 10px; transition: background 0.35s, border-color 0.35s; }
+.j-row + .j-row { border-top-width: 0; }
+.j-row b { font-family: var(--font-mono); font-size: 18px; width: 44px; flex: none; }
+.j-row span { font-size: 15.5px; }
+.j-row.hot { background: var(--hl); border-color: var(--fg); }
+.j-term { position: absolute; left: 650px; top: 300px; width: 340px; height: 74px; background: #16181d; border-radius: 10px; padding: 8px 14px; font-family: var(--font-mono); font-size: 16px; color: #e8eaee; }
+.j-term .pr { color: #7ee787; }
+#j-arc { position: absolute; left: 0; top: 0; width: 360px; height: 380px; overflow: visible; pointer-events: none; }
+#j-arcp { fill: none; stroke: var(--rip); stroke-width: 3; stroke-dasharray: 200; stroke-dashoffset: 200; transition: stroke-dashoffset 0.6s, opacity 0.3s; }
+#j-arc.on #j-arcp { stroke-dashoffset: 0; }
+
+/* ---------- Teil 6: Muster und Spickzettel ---------- */
+#L-m .mbox { position: absolute; top: 8px; height: 300px; border: 2px solid var(--fg); border-radius: 12px; background: var(--soft); padding: 10px 0; opacity: 0; transform: translateY(10px); transition: opacity 0.5s, transform 0.5s; }
+#L-m .mbox.on { opacity: 1; transform: none; }
+#L-m .ml { height: 30px; line-height: 30px; padding-left: 18px; font-family: var(--font-mono); font-size: 17px; white-space: pre; transition: background 0.35s; }
+#L-m .ml .kw { color: var(--rip); font-weight: 600; } #L-m .ml .cm { color: var(--muted); }
+#L-m .ml.hot { background: var(--hl); }
+.m-note { position: absolute; left: 10px; top: 320px; width: 980px; height: 52px; border: 2px solid var(--fg); border-radius: 12px; background: var(--hl); display: flex; align-items: center; justify-content: center; gap: 28px; font-size: 18px; opacity: 0; transition: opacity 0.5s; }
+.m-note.on { opacity: 1; }
+.m-sheet { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+.m-sheet.on { opacity: 1; }
+.m-col { position: absolute; top: 6px; border: 2px solid var(--fg); border-radius: 10px; background: #fff; overflow: hidden; }
+.m-h { height: 28px; line-height: 28px; padding: 0 10px; background: var(--soft); border-bottom: 1.5px solid var(--line); border-top: 1.5px solid var(--line); font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.m-col .m-h:first-child { border-top: 0; }
+.m-r { display: grid; height: 33px; align-items: center; padding: 0 10px; border-top: 1px solid #e6e8ee; font-size: 15px; white-space: nowrap; }
+.m-r code { font-size: 15.5px; font-weight: 600; white-space: pre; }
+.m-tip { position: absolute; left: 720px; top: 182px; width: 270px; border: 2px solid var(--fg); border-radius: 10px; background: var(--hl); padding: 8px 12px; font-size: 15.5px; line-height: 1.4; transition: box-shadow 0.4s; }
+.m-tip.hot { box-shadow: 0 0 0 4px var(--ptr); }
+.m-tip code { font-weight: 600; }
+
+/* Unterteil */
+.cap { margin-top: 8px; min-height: 118px; }
+.cap h1 { font-size: 24px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.cap p { margin: 0; font-size: 21px; line-height: 1.35; max-width: 86ch; }
+.cap code { font-size: 0.92em; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot { width: 30px; height: 30px; padding: 0; border-radius: 50%; border-color: var(--line); font-family: var(--font-mono); font-size: 14px; }
+.dot[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#next { min-width: 170px; background: var(--fg); color: var(--bg); margin-left: auto; }
+#next.play { background: var(--ptr); color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="act" id="act"></span><span class="legend" id="legend" hidden><span><i class="sw"></i>gelb = eben passiert</span><span><i class="tri"></i><b class="rp">rip</b> = kommt als Nächstes</span></span><span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+      <div class="layer off" id="L-p"></div>
+      <div class="layer off" id="L-r"></div>
+      <div class="layer off" id="L-s"></div>
+      <div class="layer off" id="L-t"></div>
+      <div class="layer off" id="L-j"></div>
+      <div class="layer off" id="L-m"></div>
+      <div id="fx"></div>
+    </div>
+  </div>
+  <div class="cap"><h1 id="ttl"></h1><p id="say"></p></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Zurück">←</button>
+    <span id="dots" style="display:flex;gap:6px"></span>
+    <button id="replay" aria-label="Teil neu starten" title="Teil neu starten (R)">↺</button>
+    <button id="next">Weiter →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), box = $('box'), fx = $('fx');
+  const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  let instantNow = false;
+  // Einblende-Animation nach dem Ende entfernen, sonst startet sie neu, wenn .noanim wieder wegfällt
+  stage.addEventListener('animationend', e => e.target.classList.remove('flash'));
+  // Text ändern: kurz einblenden statt hart zu springen
+  function txt(el, s, html) {
+    const old = html ? el.innerHTML : el.textContent;
+    if (old === s) return;
+    if (html) el.innerHTML = s; else el.textContent = s;
+    if (instantNow) el.classList.remove('flash');
+    if (!instantNow && s !== '') { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  }
+
+  /* ---------- gemeinsame Zeichnungen ---------- */
+  const CHIP = '<div class="pin l"></div><div class="pin r"></div><div class="pin t"></div><div class="pin b"></div><div class="name">CPU</div>';
+  const ALU = id => '<svg viewBox="0 0 170 68"><polygon points="0,0 70,0 85,14 100,0 170,0 134,68 36,68" fill="var(--chip2)" stroke="var(--pin)" stroke-width="2" stroke-linejoin="round"/></svg><small>ALU</small><b id="' + id + '"></b>';
+  // RAM-Riegel, markierter Chip Nummer 5
+  function stickSVG() {
+    let h = '<path d="M4 6 H342 V52 H186 V46 H176 V52 H4 Z" fill="var(--pcb)" stroke="var(--pcb2)" stroke-width="2.5"/>';
+    for (let k = 0; k < 8; k++) h += '<rect x="' + (14 + k * 41) + '" y="12" width="33" height="26" rx="2" fill="var(--chip)"/>';
+    for (let x = 10; x < 338; x += 6) { if (x > 172 && x < 190) continue; h += '<rect x="' + x + '" y="44" width="3.5" height="8" fill="var(--gold)"/>'; }
+    h += '<rect x="' + (14 + 5 * 41 - 3) + '" y="9" width="39" height="32" rx="3" fill="none" stroke="var(--ptr)" stroke-width="2.5"/>';
+    return h;
+  }
+  // Lupe: gestrichelte Linien vom markierten Chip (Riegel bei x0,y0 mit Breite w) zur Tabelle (links l, rechts r, oben y)
+  function zoomPath(x0, y0, w, l, r, y) {
+    const k = w / 346, a = x0 + (14 + 5 * 41 - 3) * k, b = a + 39 * k, top = y0 + 41 * k;
+    return '<path d="M' + a + ' ' + top + ' L' + l + ' ' + y + ' M' + b + ' ' + top + ' L' + r + ' ' + y + '" stroke="var(--ptr)" stroke-width="2" stroke-dasharray="5 4" fill="none"/>';
+  }
+  const hx = (layer, hot) => layer.querySelectorAll('.hx').forEach(e => e.classList.toggle('hot', hot.includes(e.id)));
+
+  /* ================= Teil 1: vom .asm zum Programm ================= */
+  const P = $('L-p');
+  // Befehlszeilen: [Token, ID] ; ID = Flag zum Hervorheben
+  const CMD = {
+    lin: [
+      [['$ ', 'pr'], ['nasm', 'tn'], ' ', ['-f elf64', 'f'], ' ', ['-O0', 'O'], ' ', ['-g', 'g'], ' ', ['-F dwarf', 'F'], ' ', ['-o testprg.o', 'o'], ' ', ['testprg.asm', 'in']],
+      [['$ ', 'pr'], ['gcc', 'tg'], ' ', ['-ggdb', 'gg'], ' ', ['-lc', 'lc'], ' ', ['-no-pie', 'np'], ' ', ['-o testprg', 'o2'], ' ', ['testprg.o', 'in2']]
+    ],
+    mac: [
+      [['$ ', 'pr'], ['nasm', 'mn'], ' ', ['-f macho64', 'mf'], ' -O0 -g ', ['--prefix _', 'mp'], ' -o testprg.o testprg.asm'],
+      [['$ ', 'pr'], ['gcc', 'mg'], ' ', ['-arch x86_64', 'ma'], ' ', ['-Wl,-no_pie', 'mw'], ' -o testprg testprg.o']
+    ]
+  };
+  const NOTE = {
+    f: '<b>-f elf64</b> Format der Datei: ELF64 = Linux', O: '<b>-O0</b> keine Optimierung', g: '<b>-g</b> Debug-Infos dazuschreiben',
+    F: '<b>-F dwarf</b> Format der Debug-Infos', o: '<b>-o</b> Name der Ausgabe (output)', gg: '<b>-ggdb</b> Debug-Infos für gdb',
+    lc: '<b>-lc</b> C-Bibliothek dazunehmen', np: '<b>-no-pie</b> feste Adressen erlauben', o2: '<b>-o</b> Name des Programms',
+    mf: '<b>-f macho64</b> Format von macOS', mp: '<b>--prefix _</b> main heißt auf dem Mac _main', ma: '<b>-arch x86_64</b> Intel-Code bauen', mw: '<b>-Wl,-no_pie</b> Option an den Linker'
+  };
+  (function buildP() {
+    const line = (L, k, set) => '<div class="p-line" id="pl-' + set + k + '">' + L.map(t => typeof t === 'string' ? esc(t) :
+      t[1] === 'pr' ? '<span class="pr">' + esc(t[0]) + '</span>' : '<span class="p-tk hx" id="tk-' + t[1] + '">' + esc(t[0]) + '</span>').join('') + '</div>';
+    let h = '<div class="p-cmd"><div class="p-set" id="ps-lin">' + CMD.lin.map((L, k) => line(L, k, 'lin')).join('') + '</div>' +
+      '<div class="p-set" id="ps-mac">' + CMD.mac.map((L, k) => line(L, k, 'mac')).join('') + '</div></div>';
+    h += '<div class="p-note" id="p-note"></div>';
+    const X = { asm: 70, nasm: 256, o: 402, gcc: 588, exe: 734 };
+    h += '<svg style="position:absolute;inset:0;width:1000px;height:380px;overflow:visible;pointer-events:none"><defs><marker id="pah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--fg)"/></marker></defs>' +
+      [[232, 254], [378, 400], [564, 586], [710, 732]].map(([a, b]) => '<line x1="' + a + '" y1="226" x2="' + b + '" y2="226" stroke="var(--fg)" stroke-width="2.5" marker-end="url(#pah)"/>').join('') +
+      '<line id="p-libar" x1="648" y1="292" x2="648" y2="266" stroke="var(--ok)" stroke-width="2.5" marker-end="url(#pah)" class="fade"/></svg>';
+    h += '<div class="p-doc" id="d-asm" style="left:' + X.asm + 'px">' +
+      ['<span style="color:var(--rip)">SECTION</span> .text', 'global main', 'extern printf', 'main:', '  …', '  call printf', '  ret'].map(r => '<div class="r">' + r + '</div>').join('') + '</div>';
+    h += '<div class="p-fn" style="left:' + X.asm + 'px">testprg.asm</div>';
+    h += '<div class="p-tool hx" id="t-nasm" style="left:' + X.nasm + 'px"><b>nasm</b><span>Assembler</span></div>';
+    const bytes = gapId => ['<div class="r c">Maschinencode</div>', '<div class="r">…</div>',
+      '<div class="r">e8 <span class="gap" id="' + gapId + '">' + (gapId === 'gap-o' ? '?? ?? ?? ??' : '2b 01 00 00') + '</span></div>', '<div class="r">c3</div>'].join('');
+    h += '<div class="p-doc" id="d-o" style="left:' + X.o + 'px">' + bytes('gap-o') + '</div><div class="p-fn" id="fn-o" style="left:' + X.o + 'px">testprg.o</div>';
+    h += '<div class="p-tool hx" id="t-gcc" style="left:' + X.gcc + 'px"><b>gcc</b><span>Linker</span></div>';
+    h += '<div class="p-lib" id="p-lib"><b>libc</b><span id="lib-pf">printf</span></div>';
+    h += '<div class="p-doc" id="d-exe" style="left:' + X.exe + 'px">' + bytes('gap-x') +
+      '<svg class="p-run" width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="15" fill="var(--ok)"/><path d="M13 10 L24 17 L13 24 Z" fill="#fff"/></svg></div>' +
+      '<div class="p-fn" id="fn-exe" style="left:' + X.exe + 'px">testprg</div>';
+    P.innerHTML = h;
+  })();
+  function drawP(st) {
+    $('ps-lin').style.opacity = st.mac ? 0 : 1; $('ps-mac').style.opacity = st.mac ? 1 : 0;
+    ['lin', 'mac'].forEach(s => [0, 1].forEach(k => { $('pl-' + s + k).style.opacity = st.lines > k ? 1 : 0; }));
+    hx(P, st.hot);
+    const n = $('p-note');
+    if (st.flag) {
+      txt(n, NOTE[st.flag], true);
+      const t = $('tk-' + st.flag); n.style.left = Math.min(t.offsetLeft + 26 - 14, 990 - n.offsetWidth) + 'px'; n.style.opacity = 1;
+    } else n.style.opacity = 0;
+    $('d-o').classList.toggle('gone', !st.o); $('fn-o').style.opacity = st.o ? 1 : 0.15;
+    $('d-exe').classList.toggle('gone', !st.exe); $('fn-exe').style.opacity = st.exe ? 1 : 0.15;
+    $('gap-o').classList.toggle('hot', !!st.gapHot);
+    $('gap-x').classList.toggle('fill', true);
+    $('p-lib').style.opacity = st.lib ? 1 : 0; $('p-libar').style.opacity = st.lib ? 1 : 0;
+  }
+
+  /* ================= Teil 2: Register ================= */
+  const R = $('L-r');
+  const RN1 = ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp'], RN2 = ['r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15'];
+  const BX = j => 392 + j * 74;   // Byte-Kästchen j = 0 (Byte 7, links) … 7 (Byte 0, rechts)
+  (function buildR() {
+    let h = '<div class="cpu" style="left:24px;top:18px;width:300px;height:344px">' + CHIP;
+    const slot = (n, x, y, cls) => '<div class="r-slot hx' + (cls || '') + '" id="rs-' + n + '" style="left:' + x + 'px;top:' + y + 'px">' + n + '<span class="r-badge gone" id="rb-' + n + '"></span></div>';
+    RN1.forEach((n, i) => { h += slot(n, 18, 36 + i * 33); });
+    RN2.forEach((n, i) => { h += slot(n, 152, 36 + i * 33); });
+    h += '<div class="r-slot hx rip" id="rs-rip" style="left:18px;top:305px;width:258px">rip</div>';
+    h += '</div>';
+    // Zoom-Strahl liegt ÜBER der CPU und beginnt direkt an rax (rechte Ecken), damit klar ist, woher er kommt
+    h += '<svg class="fade" id="r-zoom" style="position:absolute;inset:0;width:1000px;height:380px;overflow:visible;pointer-events:none"><path d="M170 54 L392 122 L392 182 L170 88 Z" fill="rgba(255,212,0,0.22)"/><path d="M170 54 L392 122 M170 88 L392 182" stroke="#c99a00" stroke-width="2.5" stroke-dasharray="7 5" fill="none"/></svg>';
+    h += '<div class="r-ins" id="r-ins"></div>';
+    for (let j = 0; j < 8; j++) h += '<div class="r-bnum fade" id="rn-' + j + '" style="left:' + BX(j) + 'px">Byte ' + (7 - j) + '</div><div class="r-byte" id="rby-' + j + '" style="left:' + BX(j) + 'px"></div>';
+    // Klammern: [Name, von j, bis j, Zeile, Text]
+    [['rax', 0, 7, 0, '64 Bit, das ganze Register'], ['eax', 4, 7, 1, '32 Bit · e = extended'], ['ax', 6, 7, 2, '16 Bit'], ['ah', 6, 6, 3, ''], ['al', 7, 7, 3, '']].forEach(([n, a, b, row, t]) => {
+      h += '<div class="r-brk gone" id="rk-' + n + '" style="left:' + (BX(a) + 3) + 'px;width:' + (BX(b) + 68 - BX(a) - 6) + 'px;top:' + (188 + row * 34) + 'px"><span>' + n + (t ? ' <small>' + t + '</small>' : '') + '</span></div>';
+    });
+    h += '<div class="r-val" id="r-val"></div>';
+    R.innerHTML = h;
+  })();
+  function drawR(st) {
+    hx(R, st.zoom ? (st.hot || []).concat('rs-rax') : (st.hot || []));   // beim Zoom bleibt rax immer markiert
+    $('r-zoom').style.opacity = st.zoom ? 1 : 0;
+    const ins = $('r-ins'); ins.style.opacity = st.ins ? 1 : 0; if (st.ins) txt(ins, st.ins, true);
+    for (let j = 0; j < 8; j++) {
+      const e = $('rby-' + j), on = st.zoom && j < st.nb;
+      e.style.opacity = on ? 1 : 0; e.classList.toggle('gone', !on); e.style.transitionDelay = on && !instantNow ? (j * 0.08) + 's' : '0s';
+      $('rn-' + j).style.opacity = on ? 1 : 0;
+      txt(e, st.bytes[j]);
+      e.classList.toggle('hot', (st.hb || []).includes(j)); e.classList.toggle('warn', (st.wb || []).includes(j));
+    }
+    ['rax', 'eax', 'ax', 'ah', 'al'].forEach(n => { const e = $('rk-' + n), on = st.brk.includes(n); e.classList.toggle('gone', !on); e.style.opacity = on ? 1 : 0; });
+    const v = $('r-val'); v.style.opacity = st.val ? 1 : 0; if (st.val) txt(v, st.val, true);
+    [...RN1, ...RN2].forEach(n => { const b = $('rb-' + n), t = (st.badge || {})[n]; b.classList.toggle('gone', !t); b.style.opacity = t ? 1 : 0; if (t) b.textContent = t; });
+  }
+
+  /* ================= Teil 3: Größen und Variablen ================= */
+  const SZ = [['DB', 1, 'Byte', 'char', 'byte'], ['DW', 2, 'Word', 'short', 'word'], ['DD', 4, 'Double Word', 'int', 'dword'], ['DQ', 8, 'Quad Word', 'long, Zeiger', 'qword']];
+  const Sx = $('L-s');
+  const SY = j => 136 + j * 28;   // RAM-Zeile j = 0 (…2007, oben) … 7 (…2000, unten)
+  (function buildS() {
+    let h = '<div class="lab s-hd1" style="left:14px;top:4px">Größe festlegen · .data, .rodata</div><div class="lab s-hd2" style="left:14px;top:4px">Platz reservieren · .bss</div><div class="lab" style="left:394px;top:4px">in C</div>';
+    SZ.forEach(([d, n, name, c, kw], i) => {
+      h += '<div class="s-row gone" id="sr-' + i + '" style="top:' + (34 + i * 74) + 'px;opacity:0"><div class="s-dir">' + d + '</div><div class="s-res">RES' + d[1] + '</div>';
+      for (let k = 0; k < n; k++) h += '<div class="s-box" style="left:' + (60 + k * 37) + 'px"></div>';
+      h += '<div class="s-txt"><b>' + n + ' Byte</b> = ' + n * 8 + ' Bit · ' + name + ' · im Befehl: <span class="mono">' + kw + '</span></div>' +
+        '<div class="s-c">' + c + '</div></div>';
+    });
+    // mehrere Werte hinter DB: jedes Zeichen / jede Zahl wird ein eigenes Byte, direkt nebeneinander
+    h += '<div class="s-msg"><code>msg DB "Hallo", 10, 0</code>' + ['H', 'a', 'l', 'l', 'o', '10', '0'].map((b, k) => '<div class="s-mb" data-k="' + k + '">' + b + '</div>').join('') + '</div>';
+    h += '<div class="codebox" style="left:500px;top:4px;width:490px;height:84px;padding-top:4px">' +
+      ['<span class="kw">var1</span>  DQ 87          <span class="cm">; in SECTION .data</span>', 'mov rax, qword [var1]', 'lea rsi, [var1]'].map((l, i) => '<div class="ln hx" id="sl-' + i + '" style="padding-left:14px">' + l + '</div>').join('') + '</div>';
+    h += '<svg class="stick" style="left:556px;top:92px;width:200px;height:37px" viewBox="0 0 346 64">' + stickSVG() + '</svg>';
+    h += '<svg style="position:absolute;inset:0;width:1000px;height:380px;overflow:visible;pointer-events:none">' + zoomPath(556, 92, 200, 580, 730, 134) + '</svg>';
+    for (let j = 0; j < 8; j++) h += '<div class="s-adr hx" id="sa-' + j + '" style="top:' + (SY(j) + 4) + 'px">…' + (0x2007 - j).toString(16) + '</div><div class="s-cell" id="sc-' + j + '" style="top:' + SY(j) + 'px"></div>';
+    h += '<div class="s-tag" id="s-tag" style="top:' + (SY(7) + 3) + 'px">← var1</div>';
+    h += '<div class="cpu" style="left:812px;top:140px;width:176px;height:170px">' + CHIP +
+      '<div class="reg" style="left:14px;top:44px;width:144px"><span class="n">rax</span><span class="v" id="sv-rax"></span></div>' +
+      '<div class="reg" style="left:14px;top:96px;width:144px"><span class="n">rsi</span><span class="v" id="sv-rsi"></span></div></div>';
+    h += '<div class="bus" style="left:732px;top:214px;width:80px"><i></i><i></i><i></i></div>';
+    Sx.innerHTML = h;
+  })();
+  function drawS(st) {
+    SZ.forEach((_, i) => { const e = $('sr-' + i); e.style.opacity = i < st.rows ? 1 : 0; e.classList.toggle('gone', i >= st.rows); e.style.transitionDelay = !instantNow && i < st.rows ? (i * 0.25) + 's' : '0s'; });
+    hx(Sx, st.hot);
+    Sx.classList.toggle('res', !!st.res); Sx.classList.toggle('kwhl', !!st.kwhl); Sx.classList.toggle('msg', !!st.msg);
+    Sx.querySelectorAll('.s-mb').forEach(e => { e.style.transitionDelay = st.msg && !instantNow ? (0.3 + e.dataset.k * 0.18) + 's' : '0s'; });
+    [0, 1, 2].forEach(i => { $('sl-' + i).style.opacity = i < st.code ? 1 : 0.18; });
+    for (let j = 0; j < 8; j++) {
+      const e = $('sc-' + j), v = st.cells[j];
+      txt(e, v); e.classList.toggle('v', v !== '?' && v !== '');
+      e.classList.toggle('hot', (st.hc || []).includes(j)); e.classList.toggle('read', (st.read || []).includes(j));
+    }
+    $('s-tag').style.opacity = st.tag ? 1 : 0;
+    ['rax', 'rsi'].forEach(r => { const e = $('sv-' + r); txt(e, st.regs[r]); e.classList.toggle('hot', (st.hr || []).includes(r)); });
+  }
+
+  /* ================= Teil 4: Sections ================= */
+  const T = $('L-t');
+  const TSRC = [['DEFAULT REL', 'hide'],   // auf dieser Seite ausgeblendet (Barış: nicht erklären)
+    ['SECTION .data', 'h'], ['    i       DD 40', 'data'], ['SECTION .bss', 'h'], ['    puffer  RESD 4', 'bss'], ['SECTION .rodata', 'h'],
+    ['    msg     DB "Hallo", 10, 0', 'ro'], ['SECTION .text', 'h'], ['    global main', 'gl'], ['    extern printf', 'ex'], ['main:', 'text'], ['    lea  rdi, [msg]', 'text'], ['    call printf', 'text'], ['    ret', 'text']];
+  // Bereiche von oben (hohe Adressen) nach unten: [ID, Name, Höhe, Beschreibung]
+  const TREG = [['stack', 'Stack', 50, 'wächst nach unten'], ['free', '', 40, ''], ['heap', 'Heap', 38, 'malloc, wächst nach oben'], ['bss', '.bss', 40, ''], ['data', '.data', 40, ''], ['rodata', '.rodata', 40, ''], ['text', '.text', 42, '']];
+  (function buildT() {
+    let h = '<div class="codebox" style="left:10px;top:4px;width:440px;height:372px"><div class="hd">programm.asm</div><div style="padding-top:6px">' +
+      TSRC.map(([l, k], i) => '<div class="ln hx" id="tl-' + i + '" style="padding-left:16px"' + (k === 'hide' ? ' hidden' : '') + '>' + (k === 'h' ? '<span class="kw">' + esc(l) + '</span>' : esc(l)) + '</div>').join('') + '</div></div>';
+    h += '<svg class="stick" style="left:562px;top:6px;width:346px;height:64px" viewBox="0 0 346 64">' + stickSVG() + '</svg>';
+    h += '<svg style="position:absolute;inset:0;width:1000px;height:380px;overflow:visible;pointer-events:none">' + zoomPath(562, 6, 346, 600, 930, 82) + '</svg>';
+    let y = 82;
+    TREG.forEach(([id, n, hh, d]) => {
+      h += '<div class="t-reg' + (id === 'free' ? ' free' : '') + ' hx" id="tr-' + id + '" style="top:' + y + 'px;height:' + (hh + (y === 82 ? 0 : 2.5)) + 'px' + (y === 82 ? '' : ';margin-top:-2.5px') + ';opacity:0"><b>' + n + '</b><span id="tc-' + id + '"></span>' + (d ? '<em>' + d + '</em>' : '') + '</div>';
+      y += hh;
+    });
+    h += '<div class="t-side" style="top:84px">hohe Adressen</div><div class="t-side" style="top:' + (y - 20) + 'px">niedrige Adressen</div>';
+    T.innerHTML = h;
+  })();
+  const TCOL = { stack: 'var(--save)', heap: '#f6efe0', bss: 'var(--quad)', data: 'var(--main)', rodata: '#efe7fb', text: 'var(--ret)', free: '#fff' };
+  function drawT(st) {
+    hx(T, st.hot);
+    TREG.forEach(([id], i) => {
+      const e = $('tr-' + id), on = i >= TREG.length - st.regs;   // von unten nach oben einblenden
+      e.style.opacity = on ? 1 : 0; e.style.transitionDelay = on && !instantNow ? ((TREG.length - 1 - i) * 0.15) + 's' : '0s';
+      e.style.background = TCOL[id];
+      if (id !== 'free') txt($('tc-' + id), (st.cont || {})[id] || '');
+    });
+    TSRC.forEach((_, i) => $('tl-' + i).classList.toggle('on', (st.on || []).includes(i)));
+  }
+
+  /* ================= Teil 5: cmp und Sprünge ================= */
+  const J = $('L-j');
+  const JC = ['int a = 10;', 'a -= 5;', 'if (a >= 0) {', '    printf("A ist positiv");', '}', 'return 0;'];
+  const JA = [['j1', '    mov  eax, 10', 0], ['j2', '    sub  eax, 5', 1], ['j3', '    cmp  eax, 0', 2], ['j4', '    jl   weiter', 2], ['j5', '    lea  rdi, [text]', 3], ['j6', '    call printf', 3], ['j7', 'weiter:', 4], ['j8', '    mov  eax, 0', 5], ['j9', '    ret', 5]];
+  // Adressen (letzte 3 Hex-Stellen) wie im echten Maschinencode: mov 5 B, sub 3 B, cmp 3 B, jl 2 B, lea 7 B, call 5 B, mov 5 B
+  const JADR = { j1: '400', j2: '405', j3: '408', j4: '40b', j5: '40d', j6: '414', j8: '419', j9: '41e' };
+  const JT = [['jmp', 'springt immer'], ['je', 'springt, wenn gleich'], ['jne', 'springt, wenn ungleich'], ['jg', 'wenn größer'], ['jge', 'wenn größer oder gleich'], ['jl', 'wenn kleiner'], ['jle', 'wenn kleiner oder gleich']];
+  (function buildJ() {
+    let h = '<div class="codebox" style="left:10px;top:4px;width:330px;height:150px"><div class="hd">C</div><div style="padding-top:4px">' +
+      JC.map((l, i) => '<div class="ln hx" id="jc-' + i + '" style="padding-left:14px">' + esc(l) + '</div>').join('') + '</div></div>';
+    h += '<div class="codebox" id="j-abox" style="left:10px;top:160px;width:330px;height:214px"><div class="hd">Assembler</div><div style="position:relative;padding-top:3px" id="j-asm"><div class="rarrow" id="j-ra"></div>' +
+      JA.map(([id, l]) => '<div class="ln" id="ln-' + id + '"' + (l.endsWith(':') ? ' style="font-weight:600"' : '') + '>' + (JADR[id] ? '<span class="jadr" id="ja-' + id + '">' + JADR[id] + '</span>' : '') + esc(l) + '</div>').join('') + '</div></div>';
+    h += '<svg id="j-arc"><defs><marker id="jah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--rip)"/></marker></defs><path id="j-arcp" marker-end="url(#jah)"/></svg>';
+    h += '<div class="bus" style="left:342px;top:250px;width:38px"><i></i><i></i><i></i></div>';
+    h += '<div class="cpu" style="left:380px;top:22px;width:226px;height:338px">' + CHIP +
+      '<div class="reg" style="left:18px;top:42px;width:184px"><span class="n rip">rip</span><span class="v" id="jv-rip"></span></div>' +
+      '<div class="reg" style="left:18px;top:86px;width:184px"><span class="n">eax</span><span class="v" id="jv-eax"></span></div>' +
+      '<div class="lab" style="left:20px;top:140px;color:#c9ced8">Flags</div>' +
+      '<div class="j-flag" id="jf-z" style="left:20px;top:162px"><small>ZF: null?</small><b id="jz"></b></div>' +
+      '<div class="j-flag" id="jf-s" style="left:114px;top:162px"><small>SF: negativ?</small><b id="js"></b></div>' +
+      ['CF', 'OF', 'PF', 'AF', '…'].map((f, i) => '<div class="j-more" style="left:' + (20 + i * 38) + 'px;top:220px">' + f + '</div>').join('') +
+      '<div class="alu" id="j-alu" style="left:28px;top:252px">' + ALU('j-aluop') + '</div>' +
+      '<div class="j-verd" id="j-verd"><b id="j-verdv"></b><span id="j-verdt"></span></div></div>';
+    h += '<svg id="j-ptr"><defs><marker id="jph" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--rip)" stroke="none"/></marker></defs><path id="j-ptrp" marker-end="url(#jph)"/></svg>';
+    JT.forEach(([m, t], i) => { h += '<div class="j-row hx" id="jt-' + m + '" style="top:' + (4 + i * 34 + (i ? 2 : 0)) + 'px' + (i ? ';margin-top:-2px' : '') + '"><b>' + m + '</b><span>' + t + '</span></div>'; });
+    h += '<div class="j-term"><span class="pr">$</span> ./testprg<div id="j-out"></div></div>';
+    J.innerHTML = h;
+  })();
+  function drawJ(st) {
+    hx(J, st.hot);
+    JA.forEach(([id]) => $('ln-' + id).classList.toggle('on', (st.on || []).includes(id)));
+    const ra = $('j-ra'), line = st.rip ? $('ln-' + st.rip) : null;
+    ra.style.opacity = line ? 1 : 0; if (line) ra.style.top = (line.offsetTop + 3) + 'px';
+    txt($('jv-rip'), st.ripv); txt($('jv-eax'), st.eax);
+    $('jv-eax').classList.toggle('hot', (st.hr || []).includes('eax')); $('jv-rip').classList.toggle('hot', (st.hr || []).includes('rip'));
+    txt($('jz'), st.zf); txt($('js'), st.sf);
+    $('jf-z').classList.toggle('hot', !!st.fhot); $('jf-s').classList.toggle('hot', !!st.fhot);
+    $('jf-s').classList.toggle('chk', st.fchk === 's');
+    const vd = st.verd || {}; $('j-verd').className = 'j-verd' + (vd.v ? ' on ' + vd.k : ''); if (vd.v) { txt($('j-verdv'), vd.v); txt($('j-verdt'), vd.t); }
+    Object.keys(JADR).forEach(id => $('ja-' + id).classList.toggle('cur', id === st.rip));
+    // lila Zeiger: vom rip-Register (links) zur Zeile, auf die rip zeigt
+    if (line) { const yl = 160 + 2 + $('j-asm').offsetTop + line.offsetTop + 9.5;
+      $('j-ptrp').setAttribute('d', 'M 394 82 H 356 V ' + yl + ' H 347'); }
+    $('j-ptr').style.opacity = line ? 1 : 0;
+    $('j-alu').classList.toggle('on', !!st.alu); txt($('j-aluop'), st.alu || '');
+    txt($('j-out'), st.out || '');
+    // Sprungbogen von jl zu weiter: links am Rand des Assembler-Kastens
+    const base = 160 + 2 + $('j-asm').offsetTop, y0 = base + $('ln-j4').offsetTop + 9.5, y1 = base + $('ln-j7').offsetTop + 9.5;
+    $('j-arcp').setAttribute('d', 'M 185 ' + y0 + ' C 285 ' + y0 + ', 285 ' + y1 + ', 118 ' + y1);
+    $('j-arc').classList.toggle('on', !!st.arc); $('j-arc').style.opacity = st.arc ? 1 : 0;
+  }
+
+  /* ================= Teil 6: Muster und Spickzettel ================= */
+  const M = $('L-m');
+  const MIF = ['<span class="cm">; if (a >= 0) { … }</span>', '    <span class="kw">cmp</span>  eax, 0', '    <span class="kw">jl</span>   weiter     <span class="cm">; umgedreht!</span>', '    …               <span class="cm">; if-Block</span>', 'weiter:'];
+  const MFOR = ['<span class="cm">; for (i = 0; i &lt; 10; i++)</span>', '    <span class="kw">mov</span>  ecx, 0', 'schleife:', '    <span class="kw">cmp</span>  ecx, 10', '    <span class="kw">jge</span>  ende       <span class="cm">; umgedreht!</span>', '    …               <span class="cm">; Rumpf</span>', '    <span class="kw">inc</span>  ecx', '    <span class="kw">jmp</span>  schleife', 'ende:'];
+  // Spickzettel: [Überschrift, [[Befehl, Wirkung], …]]
+  const MCOLS = [
+    { x: 10, w: 360, g: '148px 1fr', parts: [['Kopieren und Rechnen', [['mov  eax, ecx', 'eax = ecx'], ['lea  rsi, [i]', 'rsi = Adresse von i'], ['add  eax, 5', 'eax = eax + 5'], ['sub  eax, ecx', 'eax = eax − ecx'], ['inc  ecx', 'ecx + 1 (dec: − 1)'], ['imul eax, ecx', 'eax = eax × ecx'], ['cdq + idiv ecx', 'eax ÷ ecx, Rest in edx'], ['neg  eax', 'eax = −eax']]]] },
+    { x: 380, w: 330, g: '136px 1fr', parts: [['Bits', [['and  eax, 1', 'UND (or: ODER)'], ['xor  eax, eax', 'XOR · Trick: eax = 0'], ['not  eax', 'alle Bits umdrehen'], ['shl  eax, 1', '× 2 (shr: ÷ 2)']]], ['Vergleichen und Springen', [['cmp  ecx, 10', 'vergleicht → Flags'], ['jmp  ziel', 'springt immer'], ['jl, jge …', 'springt, wenn …']]]] },
+    { x: 720, w: 270, g: '114px 1fr', parts: [['Stack und Funktionen', [['push rax', 'auf den Stack'], ['pop  rax', 'vom Stack holen'], ['call printf', 'Funktion aufrufen'], ['ret', 'zurück']]]] }
+  ];
+  (function buildM() {
+    const box = (id, x, w, L) => '<div class="mbox" id="' + id + '" style="left:' + x + 'px;width:' + w + 'px">' + L.map((l, i) => '<div class="ml hx" id="' + id + '-' + i + '">' + l + '</div>').join('') + '</div>';
+    let h = box('mi', 10, 470, MIF) + box('mf', 500, 490, MFOR);
+    h += '<div class="m-note" id="m-note"><span><b>if</b>: Sprung <b>nach vorne</b>, über den Block</span><span><b>Schleife</b>: am Ende Sprung <b>zurück nach oben</b></span></div>';
+    h += '<div class="m-sheet" id="m-sheet">' + MCOLS.map(c => '<div class="m-col" style="left:' + c.x + 'px;width:' + c.w + 'px">' +
+      c.parts.map(([hd, rows]) => '<div class="m-h">' + hd + '</div>' + rows.map(([b, w]) => '<div class="m-r" style="grid-template-columns:' + c.g + '"><code>' + esc(b) + '</code><span>' + esc(w) + '</span></div>').join('')).join('') + '</div>').join('') +
+      '<div class="m-tip" id="m-tip">Fast immer: <code>befehl ziel, quelle</code>. Das Ergebnis landet im <b>Ziel</b>.<br>Höchstens <b>ein</b> Operand im RAM: <code>add [a], [b]</code> geht nicht.</div></div>';
+    M.innerHTML = h;
+  })();
+  function drawM(st) {
+    hx(M, st.hot || []);
+    $('mi').classList.toggle('on', !!st.ifc && !st.sheet); $('mf').classList.toggle('on', !!st.forc && !st.sheet);
+    $('m-note').classList.toggle('on', !!st.note && !st.sheet);
+    $('m-sheet').classList.toggle('on', !!st.sheet); $('m-tip').classList.toggle('hot', !!st.tip);
+  }
+
+  /* ---------- Zeichnen ---------- */
+  const DRAW = { p: drawP, r: drawR, s: drawS, t: drawT, j: drawJ, m: drawM };
+  function draw(st, instant) {
+    instantNow = !!instant;
+    if (instant) stage.classList.add('noanim');
+    Object.keys(DRAW).forEach(k => $('L-' + k).classList.toggle('off', k !== st.sc));
+    DRAW[st.sc](st);
+    if (instant) { void stage.offsetWidth; stage.classList.remove('noanim'); }
+    instantNow = false;
+  }
+
+  /* ---------- Fliegende Werte ---------- */
+  function mid(el) { const a = stage.getBoundingClientRect(), b = el.getBoundingClientRect(), k = a.width / 1000; return [(b.left - a.left + b.width / 2) / k, (b.top - a.top + b.height / 2) / k]; }
+  function fly(from, to, text, ms, cls) {
+    const c = document.createElement('div'), a = mid($(from)), b = mid($(to));
+    c.className = 'fly' + (cls ? ' ' + cls : ''); c.textContent = text;
+    c.style.left = a[0] + 'px'; c.style.top = a[1] + 'px'; c.style.transitionDuration = ms + 'ms';
+    fx.appendChild(c); void c.offsetWidth; c.style.left = b[0] + 'px'; c.style.top = b[1] + 'px';
+    later(ms + 30, () => c.remove());
+  }
+
+  // Neue Adresse für rip: startet an der Adresse links neben dem nächsten Befehl, läuft nach rechts aus dem Code,
+  // dann auf der Spur des lila Zeigers hoch zum rip-Register.
+  function ripFly(id, text) {
+    const lab = $('ja-' + id), a = mid(lab), r = mid($('jv-rip')), X = 356;
+    lab.classList.add('src');
+    const c = document.createElement('div');
+    c.className = 'fly adrc'; c.textContent = text;
+    c.style.left = a[0] + 'px'; c.style.top = a[1] + 'px'; c.style.transitionTimingFunction = 'linear';
+    fx.appendChild(c);
+    const pts = [[X, a[1], 450], [X, r[1], 450], [r[0], r[1], 400]];
+    let t = 350;
+    pts.forEach(([x, y, d]) => { later(t, () => { c.style.transitionDuration = d + 'ms'; c.style.left = x + 'px'; c.style.top = y + 'px'; }); t += d; });
+    later(t + 30, () => { c.remove(); lab.classList.remove('src'); });
+  }
+
+  /* ---------- Zustände ---------- */
+  const clone = o => JSON.parse(JSON.stringify(o));
+  function apply(st, p) { const n = clone(st); Object.entries(p).forEach(([k, v]) => { n[k] = clone(v); }); return n; }
+  const TRANSIENT = ['hot', 'on', 'read', 'hb', 'wb', 'hc', 'hr'];
+  const fresh = st => { const n = clone(st); TRANSIENT.forEach(k => { n[k] = []; }); n.alu = ''; n.fhot = 0; n.fchk = ''; return n; };
+  const F = (from, to, text, cls) => ({ fly: [from, to, text, cls] });
+  const RIP = (id, text) => ({ rfly: [id, text] });
+  const SET = (p, ms) => ({ set: p, ms });
+  const FF = Array(8).fill('FF'), Q = Array(8).fill('?');
+  // jl springt genau genommen, wenn SF ≠ OF. OF (Überlauf) ist in diesem Beispiel immer 0, darum reicht SF.
+  const CALLX = 'x = f(' + [1,2,3,4,5,6].map(n => '<span id="ra-' + n + '">' + n + '</span>').join(', ') + ');';
+
+  const S = [
+    { dot: '1', act: 'Teil 1 · Übersetzen', title: 'Vom Assembler-Text zum Programm',
+      start: { sc: 'p', lines: 0, mac: 0, flag: '', o: 0, exe: 0, lib: 0, gapHot: 0 },
+      beats: [
+        { say: 'Unser Assembler-Code steht in einer Textdatei: <code>testprg.asm</code>. Die CPU kann keinen Text ausführen. Sie versteht nur <b>Maschinencode</b>, also Bytes.' },
+        { say: 'Schritt 1: Der <b>Assembler</b> <code>nasm</code> übersetzt den Text in Maschinencode. Jeder Befehl wird zu ein paar Bytes.', ops: [
+          SET({ lines: 1 }, 600), SET({ hot: ['tk-tn'] }), F('d-asm', 't-nasm', 'Text', 'doc'), SET({ hot: ['tk-tn', 't-nasm'] }, 500), F('t-nasm', 'd-o', 'Bytes', 'doc'), SET({ o: 1, hot: [] }, 600)] },
+        { say: 'Das Ergebnis ist eine <b>Objektdatei</b> (<code>.o</code>): Maschinencode, aber noch nicht fertig. printf steht nicht in unserer Datei. An dieser Stelle bleibt eine <b>Lücke</b>.', ops: [
+          SET({ gapHot: 1 }, 600)] },
+        { say: 'Die Zeichen mit Minus davor heißen <b>Optionen</b> oder Flags. Für uns zählt nur eine: <code>-o testprg.o</code> gibt der Ausgabe ihren Namen (o = output). Am Ende steht die Eingabe <code>testprg.asm</code>.', ops: [SET({ flag: 'o', hot: ['tk-o', 'tk-in'] }, 500)] },
+        { say: 'Die anderen Flags wie <code>-f elf64</code> oder <code>-g</code> müsst ihr heute nicht verstehen, sie sind nicht unser Thema. Wer neugierig ist, kann sie schnell im Internet nachschlagen.', with: true, ops: [SET({ flag: '', hot: [] }, 300)] },
+        { say: 'Schritt 2: <code>gcc</code> arbeitet hier nicht als Compiler, sondern als <b>Linker</b>. Er nimmt unsere .o und die C-Bibliothek <b>libc</b>, in der printf steht.', ops: [
+          SET({ flag: '', lines: 2, hot: ['tk-tg'] }, 600), SET({ lib: 1 }, 600)] },
+        { say: 'Der Linker klebt alles zusammen und <b>füllt die Lücke</b> mit der Adresse von printf. Heraus kommt das fertige Programm.', ops: [
+          SET({ hot: ['t-gcc'] }), F('d-o', 't-gcc', 'testprg.o', 'doc'), F('lib-pf', 't-gcc', 'printf', 'doc'), F('t-gcc', 'd-exe', 'Programm', 'doc'), SET({ exe: 1, hot: [] }, 600)] },
+        { say: 'Auch hier gibt <code>-o testprg</code> nur den Namen des fertigen Programms an. Die übrigen Flags lassen wir wieder weg.', ops: [SET({ flag: 'o2', hot: ['tk-o2'] }, 500)] },
+        { say: 'Auf Macs mit Apple-Chip (M1 und neuer) gehen diese Befehle nicht direkt, denn der Chip ist kein x86. Getestet funktioniert diese Variante. Das Programm läuft dann über Rosetta. Die Flags darin müsst ihr auch nicht verstehen.', ops: [
+          SET({ flag: '', mac: 1, hot: [] }, 700)] }
+      ] },
+
+    { dot: '2', act: 'Teil 2 · Register', title: 'Register: Namen und Größen',
+      start: { sc: 'r', zoom: 0, nb: 0, bytes: Q.slice(), brk: [], ins: '', val: '', badge: {} },
+      beats: [
+        { say: '<b>Register</b> sind winzige Speicherplätze direkt in der CPU, viel schneller als der RAM. x86-64 hat <b>16 allgemeine Register</b>, jedes 64 Bit = 8 Byte groß.' },
+        { say: 'Zwei davon sind für den Stack reserviert: <b>rsp</b> und <b>rbp</b>. Dazu kommt <b>rip</b>: Er zeigt auf den nächsten Befehl. In rip schreibt man nicht selbst.', ops: [
+          SET({ hot: ['rs-rsp', 'rs-rbp'] }, 900), SET({ hot: ['rs-rip'] }, 500)] },
+        { say: 'Schauen wir in rax hinein. 8 Kästchen, jedes Kästchen ist <b>1 Byte</b>. Rechts liegt das unterste Byte (Byte 0).', with: true, ops: [
+          SET({ hot: ['rs-rax'], zoom: 1 }, 500), SET({ nb: 8, brk: ['rax'] }, 1100)] },
+        { say: '<b>eax</b> ist kein eigenes Register. Es ist die <b>untere Hälfte</b> von rax: 4 Byte = 32 Bit. Für einen int (4 Byte) nimmt man deshalb eax.', ops: [
+          SET({ hot: ['rs-rax'], brk: ['rax', 'eax'] }, 700)] },
+        { say: '<b>ax</b> sind die unteren 2 Byte. <b>al</b> ist das unterste Byte (l = low), <b>ah</b> das Byte darüber (h = high). Wie eine Matroschka: alles steckt in rax.', ops: [
+          SET({ brk: ['rax', 'eax', 'ax'] }, 700), SET({ brk: ['rax', 'eax', 'ax', 'al'] }, 600), SET({ brk: ['rax', 'eax', 'ax', 'al', 'ah'] }, 600)] },
+        { say: 'Vorher kurz: Was macht <code>mov</code>? <code>mov ziel, quelle</code> <b>kopiert</b> einen Wert ins Ziel. Der Name kommt von move, aber die Quelle bleibt erhalten. Beispiel: <code>mov rax, 5</code>. Danach steht in rax die 5.', ops: [
+          SET({ ins: 'mov rax, 5' }, 500), SET({ bytes: ['00', '00', '00', '00', '00', '00', '00', '05'], hb: [7], val: 'rax = 5' }, 700)] },
+        { say: 'Jetzt ein Experiment: <code>mov rax, -1</code>. Die −1 ist im Speicher lauter Einsen (Zweierkomplement). Jedes Byte ist dann <code>FF</code>, hexadezimal für 1111 1111.', ops: [
+          SET({ ins: 'mov rax, -1' }, 500), SET({ bytes: FF, hb: [0, 1, 2, 3, 4, 5, 6, 7], val: 'rax = −1' }, 700)] },
+        { say: 'Jetzt <code>mov eax, 5</code>. Wir schreiben nur in die untere Hälfte. Was steht danach in den oberen 4 Byte? Überlegt kurz.', ops: [
+          SET({ ins: 'mov eax, 5' }, 500)] },
+        { say: 'Die oberen 4 Byte werden <b>0</b>! Schreibt man in einen <b>32-Bit</b>-Namen, löscht die CPU die obere Hälfte von rax. Danach ist rax genau 5.', ops: [
+          SET({ bytes: ['FF', 'FF', 'FF', 'FF', '00', '00', '00', '05'], hb: [4, 5, 6, 7] }, 900),
+          SET({ bytes: ['00', '00', '00', '00', '00', '00', '00', '05'], wb: [0, 1, 2, 3], hb: [], val: 'rax = 5' }, 800)] },
+        { say: 'Vorsicht, bei 16 und 8 Bit ist das anders. Wir fangen neu an, wieder mit <code>mov rax, -1</code>: Alle 8 Byte werden FF.', ops: [
+          SET({ ins: 'mov rax, -1', bytes: FF, hb: [0, 1, 2, 3, 4, 5, 6, 7], wb: [], val: 'rax = −1' }, 900)] },
+        { say: 'Jetzt <code>mov ax, 5</code>. Wir schreiben nur in die unteren <b>2 Byte</b>. Werden die oberen 6 Byte diesmal auch 0? Überlegt kurz.', ops: [
+          SET({ ins: 'mov ax, 5', hb: [] }, 600)] },
+        { say: 'Nein! Bei <b>16</b> und <b>8 Bit</b> ändern sich nur die genannten Bytes, der Rest bleibt FF. rax ist dann <b>nicht</b> 5. Nur ein 32-Bit-Name wie eax löscht die obere Hälfte.', ops: [
+          SET({ bytes: ['FF', 'FF', 'FF', 'FF', 'FF', 'FF', '00', '05'], hb: [6, 7], val: 'rax = FFFF FFFF FFFF 0005 (hex)' }, 900)] },
+        { say: 'Noch eine feste Regel, die Aufrufkonvention (Linux und macOS): Das <b>1. bis 6. Argument</b> einer Funktion kommt in <b>rdi, rsi, rdx, rcx, r8, r9</b>. Ab dem 7. über den Stack. Der <b>Rückgabewert</b> steht in <b>rax</b>.', ops: [
+          SET({ zoom: 0, val: '', brk: [], nb: 0, ins: CALLX }, 700),
+          F('ra-1', 'rs-rdi', '1'),
+          SET({ badge: { rdi: '1' }, hot: ['rs-rdi'] }, 250),
+          F('ra-2', 'rs-rsi', '2'),
+          SET({ badge: { rdi: '1', rsi: '2' }, hot: ['rs-rsi'] }, 250),
+          F('ra-3', 'rs-rdx', '3'),
+          SET({ badge: { rdi: '1', rsi: '2', rdx: '3' }, hot: ['rs-rdx'] }, 250),
+          F('ra-4', 'rs-rcx', '4'),
+          SET({ badge: { rdi: '1', rsi: '2', rdx: '3', rcx: '4' }, hot: ['rs-rcx'] }, 250),
+          F('ra-5', 'rs-r8', '5'),
+          SET({ badge: { rdi: '1', rsi: '2', rdx: '3', rcx: '4', r8: '5' }, hot: ['rs-r8'] }, 250),
+          F('ra-6', 'rs-r9', '6'),
+          SET({ badge: { rdi: '1', rsi: '2', rdx: '3', rcx: '4', r8: '5', r9: '6' }, hot: ['rs-r9'] }, 250),
+          SET({ badge: { rdi: '1', rsi: '2', rdx: '3', rcx: '4', r8: '5', r9: '6', rax: 'ret' }, hot: ['rs-rax'] }, 500)] }
+      ] },
+
+    { dot: '3', act: 'Teil 3 · Größen', title: 'Datengrößen und Variablen',
+      start: { sc: 's', rows: 0, res: 0, msg: 0, code: 0, cells: Array(8).fill(''), tag: 0, regs: { rax: '?', rsi: '?' } },
+      beats: [
+        { say: 'In Assembler gibt es <b>keine Datentypen</b> wie int oder char. Der Prozessor sieht nur Bytes. Man sagt ihm nur, <b>wie viele</b> Bytes.', ops: [SET({ rows: 4 }, 1300)] },
+        { say: 'Die Namen kommen von früher: Ein <b>Word</b> waren 2 Byte, so breit wie die alten 16-Bit-Register. Double Word ist das Doppelte, Quad Word das Vierfache.' },
+        { say: 'DB … DQ legen Platz <b>mit Startwert</b> an (<code>.data</code>, <code>.rodata</code>). In <code>.bss</code> liegt Platz <b>ohne</b> Startwert. Dort heißen die gleichen Größen <b>RESB … RESQ</b> (RES = reservieren). Beispiel: <code>puffer RESD 4</code> = 4 × 4 Byte.', ops: [SET({ res: 1 }, 600)] },
+        { say: 'Zurück zu DB. Hinter DB dürfen mehrere Werte stehen: <code>msg DB "Hallo", 10, 0</code>. Jedes Zeichen und jede Zahl wird <b>ein eigenes Byte</b>, direkt nebeneinander: 7 Byte. (10 = Zeilenumbruch, 0 = Textende.)', ops: [SET({ res: 0 }, 500), SET({ msg: 1 }, 1700)] },
+        { say: '<code>var1 DQ 87</code> legt eine Variable an. DQ heißt 8 Byte Platz, Startwert 87. Die 87 passt in ein Byte. Sie steht im <b>untersten</b> Byte, die anderen sind 0 (x86 speichert das kleinste Byte zuerst).', ops: [
+          SET({ msg: 0 }, 400), SET({ code: 1, hot: ['sl-0'] }, 500), F('sl-0', 'sc-7', '87'), SET({ cells: ['0', '0', '0', '0', '0', '0', '0', '87'], hc: [0, 1, 2, 3, 4, 5, 6, 7] }, 700)] },
+        { say: 'Wichtig: <code>var1</code> ist nur ein <b>Name für eine Adresse</b>, hier …2000. Wo die Variable anfängt.', ops: [SET({ tag: 1, hot: ['sa-7'] }, 600)] },
+        { say: 'Eckige Klammern heißen: Geh zu dieser Adresse und nimm den <b>Wert</b>. <code>mov rax, qword [var1]</code> liest 8 Byte (qword) ab …2000 nach rax.', ops: [
+          SET({ code: 2, hot: ['sl-1'], read: [0, 1, 2, 3, 4, 5, 6, 7] }, 600), F('sc-7', 'sv-rax', '87'), SET({ regs: { rax: '87', rsi: '?' }, hr: ['rax'] }, 500)] },
+        { say: 'Das <code>qword</code> darf man hier weglassen, rax ist sowieso 8 Byte groß. Pflicht ist die Größe, wenn kein Register dabei ist: <code>mov qword [var1], 5</code>.' },
+        { say: 'Statt <code>qword</code> (8 Byte) kann dort auch <code>byte</code> (1), <code>word</code> (2) oder <code>dword</code> (4) stehen. Das sind genau die Wörter „im Befehl“ links in der Tabelle. Zum Beispiel <code>mov byte [var1], 5</code> schreibt nur 1 Byte.', with: true, ops: [SET({ kwhl: 1 }, 500)] },
+        { say: '<code>lea rsi, [var1]</code> (load effective address) geht <b>nicht</b> in den RAM. Es rechnet nur die Adresse aus. So übergibt man zum Beispiel einen Text an printf.', ops: [
+          SET({ code: 3, kwhl: 0, hot: ['sl-2', 'sa-7'] }, 600), F('sa-7', 'sv-rsi', '…2000', 'adrc'), SET({ regs: { rax: '87', rsi: '…2000' }, hr: ['rsi'] }, 500)] },
+        { say: 'Merkt euch: Seht ihr <b>eckige Klammern</b>, geht es um den <b>RAM</b>. Wir holen dort einen Wert ab oder schreiben einen hinein. Einzige Ausnahme ist <code>lea</code>: Es rechnet nur die Adresse aus.' }
+      ] },
+
+    { dot: '4', act: 'Teil 4 · Sections', title: 'Sections: Wohin kommt was?',
+      start: { sc: 't', regs: 0, cont: {} },
+      beats: [
+        { say: 'Ein Programm besteht aus Abschnitten, den <b>Sections</b>. Beim Start legt das Betriebssystem jede Section in einen eigenen Bereich im RAM.', ops: [SET({ regs: 7 }, 1400)] },
+        { say: '<code>.text</code> ist der <b>Code</b>, also die Befehle. Er liegt unten, bei den niedrigen Adressen.', ops: [
+          SET({ on: [10, 11, 12, 13] }, 500), F('tl-11', 'tr-text', 'main: lea …'), SET({ cont: { text: 'main: lea, call, ret' }, hot: ['tr-text'] }, 500)] },
+        { say: '<code>.data</code> enthält Variablen <b>mit Startwert</b>. In C wäre das eine globale Variable: <code>int i = 40;</code>.', ops: [
+          SET({ on: [2] }, 500), F('tl-2', 'tr-data', 'i = 40'), SET({ cont: { text: 'main: lea, call, ret', data: 'i = 40' }, hot: ['tr-data'] }, 500)] },
+        { say: '<code>.bss</code> enthält Variablen <b>ohne Startwert</b>. Hier reserviert man nur Platz: <code>RESD 4</code> heißt 4 × 4 Byte. Beim Start ist alles 0.', ops: [
+          SET({ on: [4] }, 500), F('tl-4', 'tr-bss', 'puffer'), SET({ cont: { text: 'main: lea, call, ret', data: 'i = 40', bss: 'puffer: 16 Byte, alle 0' }, hot: ['tr-bss'] }, 500)] },
+        { say: '<code>.rodata</code> heißt read-only data: <b>Konstanten</b>, zum Beispiel Texte. Wer dort hineinschreibt, bringt das Programm zum Absturz. Die 10 ist der Zeilenumbruch, die 0 beendet den Text.', ops: [
+          SET({ on: [6] }, 500), F('tl-6', 'tr-rodata', '"Hallo"'), SET({ cont: { text: 'main: lea, call, ret', data: 'i = 40', bss: 'puffer: 16 Byte, alle 0', rodata: '"Hallo\\n"' }, hot: ['tr-rodata'] }, 500)] },
+        { say: 'Stack und Heap schreibt man <b>nicht</b> in die Datei. Sie entstehen erst, wenn das Programm läuft. Der Stack wächst nach unten, der Heap (für malloc) nach oben.', ops: [
+          SET({ hot: ['tr-stack', 'tr-heap'] }, 600)] },
+        { say: '<code>global main</code>: main ist von außen sichtbar, damit der Startcode es findet. <code>extern printf</code>: printf steht woanders, der Linker füllt die Lücke (wie in Teil 1).', ops: [
+          SET({ on: [8, 9], hot: ['tl-8', 'tl-9'] }, 600)] },
+      ] },
+
+    { dot: '5', act: 'Teil 5 · Sprünge', title: 'cmp und Sprünge: so entsteht ein if',
+      start: { sc: 'j', rip: 'j1', ripv: '…400', eax: '?', zf: '?', sf: '?', alu: '', out: '', arc: 0 },
+      beats: [
+        { say: 'In Assembler gibt es kein <code>if</code> und kein <code>for</code>. Es gibt nur zwei Werkzeuge: <b>vergleichen</b> (cmp) und <b>springen</b>. Daraus baut man alles.' },
+        { say: 'Ein Beispiel. Zur Vereinfachung liegt a hier im Register eax. (Der Compiler würde a auf den Stack legen.) Wir gehen Befehl für Befehl durch. <b>Gelb</b> ist der Befehl, der eben ausgeführt wurde: was gerade passiert ist. Der <b>lila</b> Pfeil ist rip: was als Nächstes passiert.' },
+        { say: '<code>mov eax, 10</code>: a = 10. Danach zeigt rip auf den nächsten Befehl.', ops: [
+          SET({ on: ['j1'], hot: ['jc-0'] }), F('ln-j1', 'jv-eax', '10'), SET({ eax: '10', hr: ['eax'] }, 500),
+          RIP('j2', '…405'), SET({ rip: 'j2', ripv: '…405', hr: ['rip'] }, 600)] },
+        { say: '<code>sub eax, 5</code>: Die ALU rechnet 10 − 5. Das Ergebnis kommt zurück nach eax.', ops: [
+          SET({ on: ['j2'], hot: ['jc-1'] }), F('jv-eax', 'j-alu', '10'), SET({ alu: '10 − 5' }, 600), SET({ alu: '= 5' }, 600), F('j-alu', 'jv-eax', '5'),
+          SET({ eax: '5', hr: ['eax'], alu: '' }, 500), RIP('j3', '…408'), SET({ rip: 'j3', ripv: '…408', hr: ['rip'] }, 600)] },
+        { say: '<code>cmp eax, 0</code> rechnet <b>eax − 0</b> in der ALU. Das Ergebnis wird weggeworfen. Übrig bleiben nur die <b>Flags</b>: einzelne Bits in der CPU, die sich merken, wie das Ergebnis aussah.', ops: [
+          SET({ on: ['j3'], hot: ['jc-2'] }), F('jv-eax', 'j-alu', '5'), SET({ alu: '5 − 0' }, 600), SET({ alu: '= 5' }, 600), SET({ zf: '0', sf: '0', fhot: 1, alu: '= 5' }, 700),
+          SET({ alu: '' }, 300), RIP('j4', '…40b'), SET({ rip: 'j4', ripv: '…40b', hr: ['rip'] }, 600)] },
+        { say: 'ZF = 0: Das Ergebnis war nicht null. SF = 0: Es war nicht negativ. Die gestrichelten Kästchen sind weitere Flags, zum Beispiel OF für Überlauf. Die brauchen wir hier nicht.' },
+        { say: 'In C steht <code>a &gt;= 0</code>, im Assembler aber <code>jl</code>, also „springe, wenn kleiner“. Warum umgedreht? Überlegt kurz.', ops: [SET({ hot: ['jc-2', 'jt-jl'] }, 500)] },
+        { say: 'Der Sprung <b>überspringt</b> den if-Block. Er muss also springen, wenn die Bedingung <b>nicht</b> gilt. Nicht (a ≥ 0) heißt a &lt; 0, also <code>jl</code>.' },
+        { say: 'Jetzt läuft <code>jl weiter</code>. Ein Sprungbefehl rechnet nichts. Die CPU schaut nur nach: Ist SF = 1, war das Ergebnis also negativ?', ops: [
+          SET({ on: ['j4'], hot: ['jt-jl'] }, 500), F('ln-j4', 'jf-s', 'SF = 1 ?', 'q'), SET({ on: ['j4'], hot: ['jt-jl'], fchk: 's' }, 1500)] },
+        { say: 'SF ist 0. Die Entscheidung: <b>nicht springen</b>. rip zeigt einfach auf den nächsten Befehl, den if-Block.', ops: [
+          SET({ on: ['j4'], hot: ['jt-jl'], verd: { v: 'SF = 0', t: 'nicht springen', k: 'no' } }, 1100),
+          RIP('j5', '…40d'), SET({ rip: 'j5', ripv: '…40d', hr: ['rip'], verd: { v: 'SF = 0', t: 'nicht springen', k: 'no' } }, 800)] },
+        { say: '<code>lea rdi, [text]</code>: Die Adresse des Textes kommt nach rdi. Das ist das 1. Argument für printf.', ops: [
+          SET({ on: ['j5'], hot: ['jc-3'], verd: {} }, 600), RIP('j6', '…414'), SET({ rip: 'j6', ripv: '…414', hr: ['rip'] }, 600)] },
+        { say: '<code>call printf</code>: printf gibt den Text aus. Danach geht es mit dem Befehl nach dem call weiter, bei <code>weiter</code>.', ops: [
+          SET({ on: ['j6'], hot: ['jc-3'] }, 500), SET({ out: 'A ist positiv' }, 700), RIP('j8', '…419'), SET({ rip: 'j8', ripv: '…419', hr: ['rip'] }, 600)] },
+        { say: 'Gedankenexperiment: Wir setzen eax von Hand auf −5 und fangen wieder bei <code>cmp</code> an.', ops: [
+          SET({ out: '', eax: '−5', hr: ['eax'], zf: '?', sf: '?', verd: {}, rip: 'j3', ripv: '…408' }, 800)] },
+        { say: '<code>cmp eax, 0</code>: −5 − 0 = −5. Das Ergebnis ist negativ, also wird <b>SF = 1</b>.', ops: [
+          SET({ on: ['j3'] }), F('jv-eax', 'j-alu', '−5'), SET({ alu: '−5 − 0' }, 600), SET({ alu: '= −5' }, 600), SET({ zf: '0', sf: '1', fhot: 1, alu: '= −5' }, 700),
+          SET({ alu: '' }, 300), RIP('j4', '…40b'), SET({ rip: 'j4', ripv: '…40b', hr: ['rip'] }, 600)] },
+        { say: 'Wieder <code>jl weiter</code>. Die CPU schaut nach: Ist SF = 1?', ops: [
+          SET({ on: ['j4'], hot: ['jt-jl'] }, 500), F('ln-j4', 'jf-s', 'SF = 1 ?', 'q'), SET({ on: ['j4'], hot: ['jt-jl'], fchk: 's' }, 1500)] },
+        { say: 'Ja, SF = 1. Die Entscheidung: <b>springen</b>! rip bekommt die Adresse von <code>weiter</code> (…419). Der if-Block mit printf wird übersprungen.', ops: [
+          SET({ on: ['j4'], hot: ['jt-jl'], verd: { v: 'SF = 1', t: 'springen!', k: 'yes' } }, 1100), SET({ on: ['j4'], hot: ['jt-jl'], verd: { v: 'SF = 1', t: 'springen!', k: 'yes' }, arc: 1 }, 800),
+          RIP('j8', '…419'), SET({ rip: 'j8', ripv: '…419', hr: ['rip'], hot: ['jt-jl'], verd: { v: 'SF = 1', t: 'springen!', k: 'yes' } }, 800)] },
+        { say: 'Die wichtigsten Sprünge auf einen Blick. <code>jmp</code> springt immer, die anderen nur, wenn ihre Bedingung stimmt. Merksatz: Der Sprung führt dorthin, wo es weitergeht, wenn die Bedingung <b>nicht</b> stimmt.', ops: [
+          SET({ arc: 0, verd: {}, hot: ['jt-jmp', 'jt-je', 'jt-jne', 'jt-jg', 'jt-jge', 'jt-jl', 'jt-jle'] }, 600)] }
+      ] },
+
+    { dot: '6', act: 'Teil 6 · Muster', title: 'if und for in Assembler, und ein Spickzettel',
+      start: { sc: 'm', ifc: 0, forc: 0, note: 0, sheet: 0, tip: 0 },
+      beats: [
+        { say: 'Zum Schluss zwei Muster, die ihr immer wieder seht. Ein <b>if</b>: vergleichen, dann mit der <b>umgedrehten</b> Bedingung über den Block springen. Genau das haben wir eben gemacht.', with: true, ops: [SET({ ifc: 1, hot: ['mi-1', 'mi-2'] }, 600)] },
+        { say: 'Eine <b>for-Schleife</b>: Der Zähler i liegt in ecx. Oben wird geprüft, ob die Schleife fertig ist, wieder umgedreht: aus i &lt; 10 wird <code>jge ende</code>. Unten zählt <code>inc</code> ecx hoch, und <code>jmp</code> springt zurück nach oben.', with: true, ops: [SET({ forc: 1, hot: ['mf-3', 'mf-4', 'mf-6', 'mf-7'] }, 600)] },
+        { say: 'Der Unterschied in einem Satz: Beim if springt man nach vorne, bei der Schleife am Ende zurück nach oben.', with: true, ops: [SET({ note: 1 }, 500)] },
+        { say: 'Dazu ein Spickzettel mit den wichtigsten Befehlen. Wir gehen nicht jeden einzeln durch: Das meiste kennt ihr schon aus Informatik 2, und es sind einfache Befehle.', with: true, ops: [SET({ sheet: 1 }, 600)] },
+        { say: 'Den Rest lernt ihr beim Üben: Beim Lösen der Aufgaben und beim Schreiben eigener kleiner Programme gewöhnt ihr euch an die Syntax und an diese Denkweise. Merkt euch vor allem das Muster rechts.', with: true, ops: [SET({ tip: 1 }, 500)] }
+      ] }
+  ];
+
+  /* ---------- Schritte bauen: erst Text, dann Animation ---------- */
+  S.forEach(sc => {
+    let st = fresh(Object.assign({}, clone(sc.start)));
+    const steps = [];
+    sc.beats.forEach(b => {
+      if (b.ops) {
+        // with: Bild erscheint zusammen mit dem Text (wenn der Text es schon beschreibt)
+        if (!b.with) steps.push({ say: b.say, st: clone(st) });
+        let nx = fresh(st); b.ops.forEach(o => { if (o.set) nx = apply(nx, o.set); });
+        steps.push({ say: b.say, st: nx, play: true, with: !!b.with, ops: b.ops, from: fresh(st) });
+        st = nx;
+      } else steps.push({ say: b.say, st: clone(st) });
+    });
+    sc.steps = steps;
+  });
+
+  /* ---------- Abspielen ---------- */
+  let timers = [], busy = false, target = null;
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const stop = () => { timers.forEach(clearTimeout); timers = []; fx.innerHTML = ''; };
+  function finish() { stop(); busy = false; draw(target, true); ui(); }
+  function play(step) {
+    busy = true; target = step.st; ui();
+    let cur = step.from, t = 0;
+    draw(cur, false);
+    step.ops.forEach(o => {
+      if (o.fly) { const [a, b, text, cls] = o.fly, d = 750; later(t, () => fly(a, b, text, d, cls)); t += d + 40; }
+      else if (o.rfly) { const [id, text] = o.rfly; later(t, () => ripFly(id, text)); t += 1700; }
+      else if (o.set) { const p = o.set; later(t, () => { cur = apply(cur, p); draw(cur, false); }); t += o.ms || 450; }
+    });
+    later(t + 100, () => { busy = false; draw(target, false); ui(); });
+  }
+
+  let cur = 0, k = 0, steps = [];
+  const dots = $('dots');
+  S.forEach((s, i) => { const d = document.createElement('button'); d.className = 'dot'; d.textContent = s.dot; d.title = s.title; d.onclick = () => show(i); dots.appendChild(d); });
+  function ui() {
+    const nx = steps[k + 1];
+    $('next').textContent = busy ? 'läuft …' : nx && nx.play && !nx.with ? 'Zeigen →' : (!nx && cur < S.length - 1 ? 'Nächster Teil →' : 'Weiter →');
+    $('next').classList.toggle('play', !busy && !!(nx && nx.play && !nx.with));
+    $('next').disabled = !busy && !nx && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && k === 0;
+    $('cnt').textContent = 'Schritt ' + (k + 1) + ' / ' + steps.length;
+  }
+  function go(j, anim) {
+    const s = steps[j]; k = j;
+    $('say').innerHTML = s.say;
+    stop(); busy = false; target = s.st;
+    if (anim && s.play) play(s); else draw(s.st, true);
+    ui();
+  }
+  function show(i, last) {
+    stop(); busy = false; cur = i; steps = S[i].steps;
+    $('act').textContent = S[i].act; $('ttl').textContent = S[i].title;
+    $('legend').hidden = S[i].dot !== '5';   // Legende Gelb / rip nur im Teil mit dem Programmablauf
+    [...dots.children].forEach((d, n) => { if (n === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    go(last ? steps.length - 1 : 0, false);
+  }
+  function next() {
+    if (busy) return finish();
+    if (k < steps.length - 1) go(k + 1, true); else if (cur < S.length - 1) show(cur + 1);
+  }
+  function prev() {
+    if (busy) finish();
+    if (k > 0) go(k - 1, false); else if (cur > 0) show(cur - 1, true);
+  }
+  $('next').onclick = next; $('prev').onclick = prev; $('replay').onclick = () => show(cur);
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'r' || e.key === 'R') show(cur);
+  });
+
+  function fit() {
+    const w = box.clientWidth, s = Math.max(0.5, Math.min(w / 1000, (window.innerHeight - 250) / 380, 1.6));
+    stage.style.transform = 'scale(' + s + ')'; stage.style.left = (w - 1000 * s) / 2 + 'px'; box.style.height = 380 * s + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.__go = (i, j) => { show(i); if (j) go(Math.min(j, steps.length - 1), false); };
+  window.__next = next;
+  fit(); show(0);
+})();
+</script>
+</body>
+</html>

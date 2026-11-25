@@ -1,0 +1,358 @@
+<meta charset="utf-8">
+<title>KGÜ 4 · Aufgabe 3 · Allokationsstrategien</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Wie die KGÜ-Seiten: bewusst nur hell (Beamer). Alles auf einer Bildschirmseite (ca. 1024×640).
+   Oben kurz die drei Strategien. Darunter der Simulator mit Reitern a) Worst / b) Best / c) First Fit und d) Vergleich.
+   Rot = schon belegt (wie im Aufgabenblatt), jede Anfrage hat ihre eigene Farbe, grün = gewählte Lücke. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f4f5f8;
+  --used: #d9483b; --used-bg: #fbe3e0;
+  --pick: #1f7a4d; --pick-bg: #e3f5ea; --fit: #2f5fb8; --small: #a33a2a; --skip: #9aa1ad;
+  --hl: #fff4c2; --hl-b: #b7790c;
+  --r3: #2f5fb8; --r5: #1f8a5a; --r11: #7a4fd0; --r2: #0e7490; --r9: #b7790c; --r8: #5d6370;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 10px 8px; display: grid; gap: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+/* Kopfzeile: links die Aufgabe, rechts das Thema */
+.hdr { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; border-bottom: 2px solid var(--fg); padding-bottom: 4px; }
+.hdr h1 { font-size: 24px; margin: 0; font-weight: 600; }
+.hdr .topic { font-size: 24px; font-weight: 600; color: var(--muted); }
+code, .mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+code { font-size: 0.9em; background: var(--soft); border-radius: 4px; padding: 0 4px; }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--fit); outline-offset: 2px; }
+
+section.sec { display: grid; gap: 8px; }
+
+/* Speicherbalken */
+.mem { position: relative; padding-top: 30px; }
+.bar { position: relative; height: 62px; border: 2px solid var(--fg); background: var(--bg); }
+.cell { position: absolute; top: 0; bottom: 0; border-right: 1.5px solid var(--fg);
+  background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(25% - 1px), var(--line) calc(25% - 1px), var(--line) 25%); }
+.cell:last-child { border-right: 0; }
+.blk { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-weight: 600; color: #fff; font-size: 17px; overflow: hidden; }
+.blk.used { background: var(--used); background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(25% - 1px), rgba(0,0,0,0.25) calc(25% - 1px), rgba(0,0,0,0.25) 25%); }
+.blk.req { border-left: 2px solid var(--fg); border-right: 2px solid var(--fg); }
+.gapmark { position: absolute; top: -3px; bottom: -3px; border: 3px solid transparent; border-radius: 4px; pointer-events: none; transition: border-color 0.3s, background 0.3s; }
+.gapmark.pick { border-color: var(--pick); background: rgba(31,122,77,0.12); }
+.gapmark.fit { border-color: var(--fit); border-style: dashed; }
+.gapmark.small { border-color: var(--small); border-style: dotted; }
+.gtag { position: absolute; top: 0; translate: -50% 0; white-space: nowrap; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 1px 8px; border: 1.5px solid var(--line); background: var(--bg); color: var(--muted); font-family: var(--font-mono); }
+.gtag.pick { border-color: var(--pick); background: var(--pick); color: #fff; }
+.gtag.fit { border-color: var(--fit); color: var(--fit); }
+.gtag.small { border-color: var(--small); color: var(--small); }
+.gtag.skip { border-style: dashed; color: var(--skip); }
+.gtag.edge { translate: -100% 0; }
+.axis { position: relative; height: 22px; font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.axis span { position: absolute; top: 3px; transform: translateX(-50%); }
+.axis .u { right: -4px; transform: none; left: auto; }
+@media (max-width: 640px) { .axis span.odd { display: none; } .gtag { font-size: 11px; padding: 0 5px; } }
+.ptr { position: absolute; top: -34px; width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-top: 12px solid var(--fg); transform: translateX(-50%); display: none; }
+
+/* Strategie-Karten */
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 700px) { .cards { grid-template-columns: minmax(0, 1fr); } }
+.card { border: 1.5px solid var(--line); border-radius: 10px; padding: 6px 12px 7px; display: grid; gap: 1px; align-content: start; font-size: 15.5px; line-height: 1.3; }
+.card h3 { margin: 0; font-size: 18.5px; display: flex; gap: 8px; align-items: baseline; }
+.card .q { font-size: 15px; font-weight: 400; color: var(--muted); }
+.card .rule { font-weight: 600; }
+
+/* Simulator */
+.replay { border-color: #2f5fb8; color: #2f5fb8; }
+
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tabs button.cmpb { margin-left: 10px; }
+.bar2 { display: flex; gap: 10px 18px; align-items: center; flex-wrap: wrap; }
+.tabs button { border-color: var(--line); font-weight: 600; }
+.tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.ctrl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.count { font-family: var(--font-mono); color: var(--muted); }
+.queue { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.queue .ql { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; margin-right: 4px; }
+.qchip { font-family: var(--font-mono); font-weight: 600; font-size: 16px; padding: 3px 12px; border-radius: 8px; color: #fff; transition: opacity 0.3s, transform 0.3s; }
+.qchip.done { opacity: 0.25; }
+.qchip.now { transform: scale(1.12); box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--fg); }
+.qchip.wait { opacity: 0.85; }
+.qchip.extra { background: var(--r8); }
+.explain { border: 2px solid var(--fg); border-radius: 10px; padding: 8px 16px; height: 180px; overflow: hidden; }
+.explain h3 { margin: 0 0 4px; font-size: 20px; }
+.explain ul { margin: 0; padding-left: 20px; display: grid; gap: 2px; }
+.gaps { display: flex; gap: 8px; flex-wrap: wrap; font-size: 15px; color: var(--muted); align-items: center; }
+.gaps b { color: var(--fg); font-family: var(--font-mono); }
+.ghost { position: fixed; z-index: 50; pointer-events: none; margin: 0; }
+
+/* Vergleich */
+.cmp { display: grid; gap: 10px; }
+.cmp .row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; align-items: end; }
+.cmp .row { align-items: center; }
+.cmp .row .nm { font-weight: 600; font-size: 19px; }
+.cmp .row:last-child .nm { padding-bottom: 24px; }
+.cmp .mem { padding-top: 0; }
+.cmp .bar { height: 54px; }
+@media (max-width: 640px) { .cmp .row { grid-template-columns: minmax(0, 1fr); } .cmp .row .nm { padding-bottom: 0; } }
+.tbl { overflow-x: auto; border: 2px solid var(--fg); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 17.5px; }
+th, td { text-align: left; padding: 5px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); background: var(--soft); }
+tr:last-child td { border-bottom: 0; }
+td.n { font-weight: 600; white-space: nowrap; }
+td .plus { color: var(--pick); font-weight: 700; } td .minus { color: var(--small); font-weight: 700; }
+.note { font-size: 16.5px; color: var(--muted); margin: 0; }
+@media (prefers-reduced-motion: reduce) { .gapmark, .qchip { transition: none; } }
+</style>
+
+<main class="wrap">
+  <header class="hdr"><h1>Lösung der Aufgabe 3</h1><span class="topic">Allokationsstrategien</span></header>
+
+  <div class="bar2">
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="ctrl" id="ctrl">
+        <button type="button" id="prev">← Zurück</button>
+        <button type="button" id="next">Weiter →</button>
+        <button type="button" id="replay" class="replay" title="Taste R">↻ Nochmal</button>
+        <span class="count" id="count"></span>
+      </div>
+  </div>
+
+  <section class="sec" id="ideas">
+    <div class="cards">
+      <div class="card"><h3>First Fit <span class="q">„Wo passt es zuerst?“</span></h3><div class="rule">Von links durchgehen. Die <u>erste</u> Lücke nehmen, die groß genug ist.</div><div>Danach wird gar nicht weitergesucht.</div></div>
+      <div class="card"><h3>Best Fit <span class="q">„Wo passt es am knappsten?“</span></h3><div class="rule">Alle Lücken prüfen. Die <u>kleinste</u> nehmen, die gerade noch passt.</div><div>Idee: Große Lücken für große Anfragen aufheben.</div></div>
+      <div class="card"><h3>Worst Fit <span class="q">„Wo ist am meisten Platz?“</span></h3><div class="rule">Alle Lücken prüfen. Die <u>größte</u> nehmen.</div><div>Idee: Der Rest der Lücke bleibt groß genug, um noch nützlich zu sein.</div></div>
+    </div>
+  </section>
+
+  <section class="sec" id="sim">
+    <div id="simBody" class="sec">
+    <div class="queue" id="queue"></div>
+    <div id="simMem"></div>
+    <div class="gaps" id="gaps"></div>
+    <div class="explain"><h3 id="stitle"></h3><ul id="stext"></ul></div>
+    </div>
+
+    <div id="cmpBody" class="sec" hidden>
+    <div class="cmp" id="cmp"></div>
+    <div class="tbl"><table>
+      <thead><tr><th>Strategie</th><th>Vorteil</th><th>Nachteil</th></tr></thead>
+      <tbody>
+        <tr><td class="n">Worst Fit</td><td><span class="plus">+</span> Die Reste sind groß und bleiben nutzbar. Wenig externe Fragmentierung.</td><td><span class="minus">−</span> Langsam: Alle Lücken müssen durchsucht werden. Große Lücken werden zerstückelt.</td></tr>
+        <tr><td class="n">Best Fit</td><td><span class="plus">+</span> Große Lücken bleiben für große Anfragen frei.</td><td><span class="minus">−</span> Viele winzige Reste, die keiner mehr nutzen kann (hohe Fragmentierung). Auch langsam: Alle Lücken müssen durchsucht werden.</td></tr>
+        <tr><td class="n">First Fit</td><td><span class="plus">+</span> Schnell: Die Suche hört bei der ersten passenden Lücke auf.</td><td><span class="minus">−</span> Vorne entstehen viele kleine Lücken.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note"><b>Externe Fragmentierung:</b> Insgesamt ist genug frei, aber in zu kleinen Stücken. In unserem Beispiel sind am Ende bei allen drei Strategien 14 KiB frei. Ob danach noch 8 KiB am Stück passen, hängt von der Strategie ab (siehe jeweils letzter Schritt). Welche Strategie am besten ist, hängt immer von den Anfragen ab.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const md = x => esc(x).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+const TOTAL = 64;
+const USED = [[8, 12], [28, 40], [56, 60]];
+const START_GAPS = [{ n: 'A', s: 0, e: 8 }, { n: 'B', s: 12, e: 28 }, { n: 'C', s: 40, e: 56 }, { n: 'D', s: 60, e: 64 }];
+const REQ = [3, 5, 11, 2, 9];
+const EXTRA = 8;
+const COL = { 3: 'var(--r3)', 5: 'var(--r5)', 11: 'var(--r11)', 2: 'var(--r2)', 9: 'var(--r9)', 8: 'var(--r8)' };
+const NAME = { worst: 'Worst Fit', best: 'Best Fit', first: 'First Fit' };
+const TAB = { worst: 'a) Worst Fit', best: 'b) Best Fit', first: 'c) First Fit', cmp: 'd) Vergleich' };
+const pct = k => (k / TOTAL * 100) + '%';
+const clone = gs => gs.map(g => ({ ...g }));
+const size = g => g.e - g.s;
+
+// Wahl einer Lücke nach Strategie. Gibt Index und die Zahl der geprüften Lücken zurück.
+function choose(kind, gaps, r) {
+  if (kind === 'first') {
+    for (let i = 0; i < gaps.length; i++) if (size(gaps[i]) >= r) return { idx: i, checked: i + 1 };
+    return { idx: -1, checked: gaps.length };
+  }
+  let idx = -1;
+  gaps.forEach((g, i) => {
+    if (size(g) < r) return;
+    if (idx < 0) { idx = i; return; }
+    if (kind === 'best' ? size(g) < size(gaps[idx]) : size(g) > size(gaps[idx])) idx = i; // strikt: bei Gleichstand bleibt die vordere
+  });
+  return { idx, checked: gaps.length };
+}
+
+const list = gs => gs.filter(g => size(g) > 0).map(g => `${g.n} ${size(g)}`).join(' · ');
+
+function simulate(kind) {
+  let gaps = clone(START_GAPS); const allocs = [];
+  const steps = [{ type: 'start', gaps: clone(gaps), allocs: [], qi: -1,
+    title: `${NAME[kind]}: Ausgangslage`,
+    text: ['Der Block kommt immer an den **Anfang** der gewählten Lücke.', kind === 'first' ? '' : 'Sind zwei Lücken **gleich gut**, nehmen wir die **vordere**.'] }];
+  REQ.forEach((r, qi) => {
+    const { idx, checked } = choose(kind, gaps, r);
+    const g = gaps[idx];
+    const live = gaps.map((x, i) => ({ x, i })).filter(o => size(o.x) > 0);
+    let text;
+    if (kind === 'first') {
+      text = live.filter(o => o.i < checked).map(o => size(o.x) >= r ? `${o.x.n}: ${size(o.x)} KiB ≥ ${r} → **passt!**` : `${o.x.n}: ${size(o.x)} KiB < ${r} → zu klein, weiter`);
+      text.push(`Erste passende Lücke: **${g.n}**.` + (qi === 0 ? ' Die Lücken dahinter schaut First Fit gar nicht an.' : ''));
+    } else {
+      const fits = live.filter(o => size(o.x) >= r), small = live.filter(o => size(o.x) < r);
+      text = [];
+      if (small.length) text.push(`Zu klein für ${r} KiB: ${small.map(o => o.x.n).join(', ')}.`);
+      const best = size(g), ties = fits.filter(o => size(o.x) === best);
+      text.push(`Die **${kind === 'best' ? 'kleinste' : 'größte'}** passende Lücke hat ${best} KiB: **${g.n}**.` + (ties.length > 1 ? ` (${ties.map(o => o.x.n).join(' und ')} sind gleich groß → die vordere: ${g.n}.)` : ''));
+    }
+    steps.push({ type: 'search', r, qi, gaps: clone(gaps), allocs: allocs.map(a => ({ ...a })), idx, checked, title: `Anfrage ${qi + 1}: ${r} KiB, welche Lücke?`, text });
+    const a = { r, s: g.s, e: g.s + r, n: g.n };
+    allocs.push(a);
+    g.s += r;
+    steps.push({ type: 'place', r, qi, gaps: clone(gaps), allocs: allocs.map(a => ({ ...a })), idx, newAlloc: allocs.length - 1,
+      title: `Anfrage ${qi + 1}: ${r} KiB in ${a.n} ablegen`,
+      text: [`**${r} KiB** kommen an den **Anfang** von Lücke ${a.n}: Adresse ${a.s} bis ${a.e} KiB.`, size(g) ? '' : `Lücke ${a.n} ist jetzt **ganz voll**.`] });
+  });
+  const free = gaps.reduce((t, g) => t + size(g), 0), maxGap = Math.max(...gaps.map(size));
+  steps.push({ type: 'end', qi: REQ.length, gaps: clone(gaps), allocs: allocs.map(a => ({ ...a })), idx: -1,
+    title: 'Fertig: alle 5 Anfragen untergebracht',
+    text: [`Zusammen sind **${free} KiB** frei, aber die größte Lücke hat nur **${maxGap} KiB**. Der freie Platz ist in Stücke zerfallen.`] });
+  const ex = choose(kind, gaps, EXTRA);
+  steps.push({ type: 'extra', r: EXTRA, qi: REQ.length, gaps: clone(gaps), allocs: allocs.map(a => ({ ...a })), idx: ex.idx, checked: ex.checked,
+    title: `Und wenn jetzt noch ${EXTRA} KiB kommen?`,
+    text: ex.idx >= 0
+      ? [`Lücke **${gaps[ex.idx].n}** hat ${size(gaps[ex.idx])} KiB → **passt!**`, kind === 'worst' ? 'Worst Fit hat die Lücke A nie angefasst, weil B und C immer größer waren.' : '']
+      : [`Insgesamt sind ${free} KiB frei, aber die größte Lücke hat nur **${maxGap} KiB** → **passt nicht!**`, 'Das nennt man **externe Fragmentierung**: genug Speicher, aber nicht am Stück.'] });
+  return steps;
+}
+const SIMS = { worst: simulate('worst'), best: simulate('best'), first: simulate('first') };
+
+// ---------------------------------------------------------------- Balken
+function memHtml(st, opts = {}) {
+  let h = `<div class="mem">`;
+  if (!opts.noTags) {
+    st.gaps.forEach((g, i) => {
+      if (size(g) <= 0) return;
+      let cls = '';
+      if (st.type === 'search' || st.type === 'extra') {
+        if (i === st.idx) cls = 'pick';
+        else if (st.checked !== undefined && i >= st.checked) cls = 'skip';
+        else cls = size(g) >= st.r ? 'fit' : 'small';
+      }
+      const mid = (g.s + g.e) / 2, edge = mid > TOTAL - 2; // ganz rechts: Schild nach links schieben, sonst ragt es aus der Seite
+      h += `<span class="gtag ${cls}${edge ? ' edge' : ''}" style="left:${edge ? '100%' : pct(mid)}" data-gi="${i}">${g.n} · ${size(g)}</span>`;
+    });
+  }
+  h += `<div class="bar">`;
+  for (let k = 0; k < TOTAL; k += 4) h += `<div class="cell" style="left:${pct(k)};width:${pct(4)}"></div>`;
+  for (const [s, e] of USED) h += `<div class="blk used" style="left:${pct(s)};width:${pct(e - s)}"></div>`;
+  st.allocs.forEach((a, i) => h += `<div class="blk req" data-a="${i}" style="left:${pct(a.s)};width:${pct(a.e - a.s)};background:${COL[a.r]}">${a.r}</div>`);
+  if (!opts.noTags && (st.type === 'search' || st.type === 'extra')) {
+    st.gaps.forEach((g, i) => {
+      if (size(g) <= 0) return;
+      const cls = i === st.idx ? 'pick' : st.checked !== undefined && i >= st.checked ? '' : size(g) >= st.r ? 'fit' : 'small';
+      if (cls) h += `<div class="gapmark ${cls}" data-gm="${i}" style="left:${pct(g.s)};width:${pct(size(g))}"></div>`;
+    });
+  }
+  h += `</div>`;
+  if (!opts.noAxis) {
+    h += `<div class="axis">`;
+    for (let k = 0; k <= TOTAL; k += 4) h += `<span class="${(k / 4) % 2 ? 'odd' : ''}" style="left:${pct(k)}">${k}</span>`;
+    h += `</div>`;
+  }
+  return h + `</div>`;
+}
+
+document.getElementById('cmp').innerHTML = ['worst', 'best', 'first'].map(k => {
+  const end = SIMS[k].find(s => s.type === 'end');
+  return `<div class="row"><div class="nm">${NAME[k]}</div>${memHtml(end, { noTags: true, noAxis: k !== 'first' })}</div>`;
+}).join('');
+
+// ---------------------------------------------------------------- Simulator
+let kind = 'worst', cur = 0;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = id => document.getElementById(id);
+const tabs = $('tabs');
+['worst', 'best', 'first', 'cmp'].forEach(k => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.role = 'tab'; b.id = 'tab-' + k; b.textContent = TAB[k];
+  if (k === 'cmp') b.className = 'cmpb';
+  b.addEventListener('click', () => { kind = k; cur = 0; render(false); });
+  tabs.appendChild(b);
+});
+
+function render(forward) {
+  document.querySelectorAll('.ghost').forEach(g => g.remove());
+  tabs.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', String(b.id === 'tab-' + kind)));
+  // d) Vergleich: eigene Ansicht, ohne Karten und ohne Schritt-Steuerung
+  const isCmp = kind === 'cmp';
+  $('cmpBody').hidden = !isCmp; $('simBody').hidden = isCmp; $('ideas').hidden = isCmp; $('ctrl').style.visibility = isCmp ? 'hidden' : '';
+  if (isCmp) return;
+  const steps = SIMS[kind], st = steps[cur];
+  // Für die Flug-Animation: Position des aktuellen Anfrage-Chips vorher merken
+  let from = null;
+  if (forward && st.type === 'place' && !reduce) {
+    const chip = document.querySelector(`.qchip[data-q="${st.qi}"]`);
+    if (chip) from = { r: chip.getBoundingClientRect(), el: chip.cloneNode(true) };
+  }
+  $('count').textContent = `Schritt ${cur + 1} / ${steps.length}`;
+  $('prev').disabled = cur === 0; $('next').disabled = cur === steps.length - 1;
+  // Warteschlange
+  let q = '<span class="ql">Anfragen</span>';
+  REQ.forEach((r, i) => {
+    const done = i < st.qi || (i === st.qi && st.type === 'place');
+    const now = i === st.qi && st.type === 'search';
+    q += `<span class="qchip ${done ? 'done' : now ? 'now' : 'wait'}" data-q="${i}" style="background:${COL[r]}">${r} KiB</span>`;
+  });
+  if (st.type === 'extra') q += `<span class="qchip extra now" data-q="x">+ ${EXTRA} KiB?</span>`;
+  $('queue').innerHTML = q;
+  $('simMem').innerHTML = memHtml(st);
+  $('gaps').innerHTML = `Freie Lücken: ${st.gaps.filter(g => size(g) > 0).map(g => `<b>${g.n}</b> ${size(g)} KiB`).join(' · ')} <span>· zusammen ${st.gaps.reduce((t, g) => t + size(g), 0)} KiB</span>`;
+  $('stitle').textContent = st.title;
+  $('stext').innerHTML = st.text.filter(Boolean).map(t => `<li>${md(t)}</li>`).join('');
+  if (reduce || !forward) return;
+
+  // Suche: Lücken der Reihe nach aufleuchten lassen
+  if (st.type === 'search' || st.type === 'extra') {
+    const order = st.gaps.map((g, i) => i).filter(i => size(st.gaps[i]) > 0 && (st.checked === undefined || i < st.checked));
+    order.forEach((i, n) => {
+      const opts = { duration: 380, delay: n * 260, fill: 'backwards', easing: 'ease-out' };
+      document.querySelector(`.gtag[data-gi="${i}"]`)?.animate([{ transform: 'scale(0.6)', opacity: 0.2 }, { transform: 'scale(1)', opacity: 1 }], opts);
+      document.querySelector(`.gapmark[data-gm="${i}"]`)?.animate([{ opacity: 0 }, { opacity: 1 }], opts);
+    });
+  }
+  // Ablegen: Chip fliegt in die Lücke, Block wächst
+  if (st.type === 'place') {
+    const blk = document.querySelector(`.blk[data-a="${st.newAlloc}"]`);
+    if (blk) {
+      blk.style.transformOrigin = 'left center';
+      blk.animate([{ transform: 'scaleX(0)', opacity: 0.4 }, { transform: 'scaleX(1)', opacity: 1 }], { duration: 450, delay: from ? 560 : 0, fill: 'backwards', easing: 'cubic-bezier(.2,.7,.2,1)' });
+      if (from) {
+        const g = from.el, r = from.r, t = blk.getBoundingClientRect();
+        g.classList.remove('done', 'now', 'wait'); g.classList.add('ghost');
+        Object.assign(g.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+        document.body.appendChild(g);
+        const dx = t.left + t.width / 2 - (r.left + r.width / 2), dy = t.top + t.height / 2 - (r.top + r.height / 2);
+        g.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${dx}px, ${dy}px) scale(0.8)`, opacity: 0.6 }], { duration: 600, easing: 'cubic-bezier(.4,0,.2,1)' }).onfinish = () => g.remove();
+        setTimeout(() => g.remove(), 900);
+      }
+    }
+  }
+}
+function go(d) { if (kind === 'cmp') return; const n = cur + d; if (n < 0 || n >= SIMS[kind].length) return; cur = n; render(d === 1); }
+$('prev').addEventListener('click', () => go(-1));
+$('next').addEventListener('click', () => go(1));
+function replay() { if (kind === 'cmp' || cur === 0) return; cur -= 1; render(false); cur += 1; requestAnimationFrame(() => render(true)); }
+$('replay').addEventListener('click', replay);
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); go(1); }
+  if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(-1); }
+  if (e.key === 'r' || e.key === 'R') replay();
+});
+render(false);
+</script>

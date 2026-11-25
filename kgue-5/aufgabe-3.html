@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KGÜ 5 · Aufgabe 3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Gleicher Stil wie Aufgabe 1 und 2: bewusst nur hell (Beamer).
+   Vier Regel-Karten mit den Abläufen aus Aufgabe 1. Pro Teilaufgabe wird ein anderes Kriterium eingeblendet.
+   Regel: erst Text, Animation erst nach Klick. Keine Emoji. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #16181d; --muted: #5d6370; --line: #c9ced8; --soft: #f1f2f5;
+  --warn: #c2410c; --hl: #fff1a8; --ptr: #ffd400; --cand: #2f5fb8;
+  --pA: #2f5fb8; --pB: #c2410c; --pC: #4d7c0f;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 18px; line-height: 1.4; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 10px 16px 10px; }
+.top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; height: 24px;
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.top .act { color: var(--fg); }
+button { font: inherit; font-size: 16px; cursor: pointer; border-radius: 8px; border: 1.5px solid var(--fg); background: var(--bg); color: var(--fg); padding: 6px 14px; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:focus-visible { outline: 3px solid var(--cand); outline-offset: 2px; }
+
+.stagebox { position: relative; margin-top: 4px; }
+.stage { position: absolute; left: 0; top: 0; width: 1000px; height: 380px; transform-origin: 0 0; }
+.stage.noanim, .stage.noanim * { transition: none !important; }
+
+#q { position: absolute; left: 10px; top: 4px; width: 976px; height: 44px; border: 2px solid var(--fg); border-radius: 10px; background: var(--hl); display: flex; align-items: center; gap: 12px; padding: 0 14px; font-size: 20px; font-weight: 600; transition: opacity 0.4s; }
+#q small { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); white-space: nowrap; }
+#cards, #sum { position: absolute; inset: 0; transition: opacity 0.5s; }
+.off { opacity: 0; pointer-events: none; }
+
+.card { position: absolute; top: 60px; width: 238px; height: 300px; border: 2px solid var(--fg); border-radius: 14px; background: #fff; padding: 10px 13px; transition: box-shadow 0.4s, opacity 0.5s, border-color 0.4s; }
+.card h2 { margin: 0; font-size: 21px; line-height: 1.2; }
+.card h2 + p { margin: 0; font-size: 13.5px; color: var(--muted); height: 20px; white-space: nowrap; }
+.strip { position: absolute; left: 13px; top: 76px; display: flex; }
+.strip i { width: 19px; height: 28px; color: #fff; font-style: normal; font-weight: 600; font-size: 13px; line-height: 28px; text-align: center; border-right: 1px solid #fff; }
+.km { position: absolute; top: 66px; width: 4px; height: 0; margin-left: -2.5px; background: var(--fg); border-radius: 2px; transition: height 0.4s; }
+.km::before { content: ""; position: absolute; left: -4px; top: -6px; width: 12px; height: 12px; border-radius: 50%; background: var(--ptr); border: 2px solid var(--fg); transform: scale(0); transition: transform 0.3s; transition-delay: inherit; }
+.wc { position: absolute; width: 18px; height: 15px; border: 1px solid var(--line); opacity: 0; transform: translateY(-8px); transition: opacity 0.35s, transform 0.35s;
+  background: repeating-linear-gradient(135deg, var(--c) 0 2.5px, transparent 2.5px 6px); }
+.big { position: absolute; left: 13px; right: 13px; top: 150px; display: flex; align-items: baseline; gap: 9px; opacity: 0; transition: opacity 0.5s; }
+.big b { font-family: var(--font-mono); font-size: 40px; line-height: 1; }
+.big span { font-size: 15px; font-weight: 600; color: var(--muted); line-height: 1.15; }
+.need { position: absolute; left: 13px; right: 13px; top: 120px; opacity: 0; transition: opacity 0.5s; }
+.need small { display: block; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+.need b { display: block; font-size: 23px; line-height: 1.25; }
+.need span { display: block; font-size: 14.5px; color: var(--muted); line-height: 1.3; margin-top: 2px; }
+.stamp { position: absolute; left: 13px; bottom: 12px; font-size: 15px; font-weight: 600; border: 2px solid var(--fg); border-radius: 999px; padding: 2px 12px; opacity: 0; transform: scale(0.7); transition: opacity 0.35s, transform 0.35s; white-space: nowrap; }
+.x { position: absolute; inset: 0; opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+.x line { stroke: var(--warn); stroke-width: 5; stroke-linecap: round; stroke-dasharray: 380; stroke-dashoffset: 380; transition: stroke-dashoffset 0.6s; }
+
+/* Kriterium einblenden */
+.mode-kw.m1 .km, .mode-kw.m2 .km { height: 48px; }
+.mode-kw.m1 .km::before, .mode-kw.m2 .km::before { transform: scale(1); }
+.mode-wait.m1 .wc, .mode-wait.m2 .wc { opacity: 0.85; transform: none; }
+.mode-kw.m1 .big.kw, .mode-kw.m2 .big.kw, .mode-wait.m2 .big.wt { opacity: 1; }
+.mode-know.m1 .need, .mode-know.m2 .need { opacity: 1; }
+.m2 .card.win { box-shadow: 0 0 0 6px var(--ptr); }
+.m2 .card.win .stamp, .m2 .card.ok .stamp, .m2 .card.out .stamp, .m2 .card.note .stamp { opacity: 1; transform: none; }
+.card.note .stamp { right: 13px; white-space: normal; font-size: 13.5px; font-weight: 400; line-height: 1.3; border-width: 1.5px; border-radius: 10px; padding: 5px 9px; background: var(--soft); transition-delay: 0.5s; }
+.card.win .stamp { background: var(--ptr); }
+.m2 .card.lose { opacity: 0.42; }
+.m2 .card.out { border-color: var(--warn); }
+.m2 .card.out .x { opacity: 1; }
+.m2 .card.out .x line { stroke-dashoffset: 0; }
+.card.out .stamp { color: var(--warn); border-color: var(--warn); background: #fff; }
+.m2 .card.out .need b { color: var(--warn); }
+
+/* Zusammenfassung */
+.srow { position: absolute; left: 10px; width: 976px; height: 96px; border: 2px solid var(--fg); border-radius: 12px; background: #fff; display: flex; align-items: center; gap: 16px; padding: 0 16px; opacity: 0; transform: translateY(14px); transition: opacity 0.5s, transform 0.5s; }
+.s1 .srow { opacity: 1; transform: none; }
+.srow .l { font-family: var(--font-mono); font-weight: 600; font-size: 22px; width: 30px; }
+.srow .t { flex: 1; font-size: 18.5px; line-height: 1.3; }
+.srow .a { width: 150px; text-align: center; font-size: 22px; font-weight: 600; background: var(--ptr); border: 2px solid var(--fg); border-radius: 10px; padding: 6px 0; }
+.srow .a.no { background: #fff; color: var(--warn); border-color: var(--warn); }
+.srow .r { width: 330px; font-size: 16px; color: var(--muted); line-height: 1.3; }
+
+.cap { margin-top: 8px; min-height: 118px; }
+.cap h1 { font-size: 24px; line-height: 1.2; margin: 0 0 4px; font-weight: 600; }
+.cap p { margin: 0; font-size: 21px; line-height: 1.35; max-width: 84ch; }
+.ctl { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.dot { width: 30px; height: 30px; padding: 0; border-radius: 50%; border-color: var(--line); font-family: var(--font-mono); font-size: 14px; }
+.dot[aria-current="step"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#next { min-width: 170px; background: var(--fg); color: var(--bg); margin-left: auto; }
+#next.play { background: var(--ptr); color: var(--fg); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="act" id="act"></span><span id="cnt"></span></div>
+  <div class="stagebox" id="box">
+    <div class="stage" id="stage">
+      <div id="q"><small>Ziel</small><span id="qt"></span></div>
+      <div id="cards"></div>
+      <div id="sum" class="off">
+        <div class="srow" style="top:60px"><div class="l">a)</div><div class="t">Möglichst wenig Zeit für Kontextwechsel</div><div class="a">FCFS</div><div class="r">Jeder Prozess rechnet einmal am Stück, also wenige Wechsel.</div></div>
+        <div class="srow" style="top:166px;transition-delay:0.4s"><div class="l">b)</div><div class="t">Möglichst wenige wartende Prozesse</div><div class="a">SJF</div><div class="r">Kleinste mittlere Verweildauer: Kurze Prozesse sind schnell wieder weg.</div></div>
+        <div class="srow" style="top:272px;transition-delay:0.8s"><div class="l">c)</div><div class="t">Ausführungszeiten vorher nicht bekannt</div><div class="a no">nicht SJF</div><div class="r">Nur SJF braucht die Dauer. Alle anderen kommen ohne sie aus.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="cap"><h1 id="ttl"></h1><p id="say"></p></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Zurück">←</button>
+    <span id="dots" style="display:flex;gap:6px"></span>
+    <button id="replay" aria-label="Teil neu starten" title="Teil neu starten (R)">↺</button>
+    <button id="next">Weiter →</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), box = $('box'), cards = $('cards');
+  const ARR = { A: 1, B: 2, C: 4 };
+  /* Abläufe aus Aufgabe 1 (dort Schritt für Schritt hergeleitet) */
+  const R = [
+    { id: 'fcfs', name: 'FCFS', sub: 'wer zuerst kam', run: 'AAAAABBBBCC', need: 'Ankunftszeit', why: 'Die sieht das System selbst, wenn der Prozess ankommt.' },
+    { id: 'prio', name: 'Priority', sub: 'höchste Priorität, präemptiv', run: 'ABBBBCCAAAA', need: 'Priorität', why: 'Die wird beim Start festgelegt.' },
+    { id: 'sjf', name: 'SJF', sub: 'kürzeste Dauer zuerst', run: 'AAAAACCBBBB', need: 'Dauer', why: 'Wie lange ein Prozess noch rechnen wird.' },
+    { id: 'rr', name: 'Round Robin', sub: 'Zeitscheibe 2 ZE', run: 'AABBAACCBBA', need: 'nichts', why: 'Ein Timer reicht.' }
+  ];
+  const card = {};
+  R.forEach((r, i) => {
+    const fin = {}; [...r.run].forEach((n, t) => { fin[n] = t + 1; });
+    let h = '<h2>' + r.name + '</h2><p>' + r.sub + '</p><div class="strip">';
+    [...r.run].forEach(n => { h += '<i style="background:var(--p' + n + ')">' + n + '</i>'; });
+    h += '</div>';
+    let kw = 0, wt = 0;
+    for (let t = 1; t <= 11; t++) {
+      if (t > 1 && r.run[t - 1] !== r.run[t - 2]) { h += '<div class="km" style="left:' + (13 + (t - 1) * 19) + 'px;transition-delay:' + kw * 0.35 + 's"></div>'; kw++; }
+      let k = 0;
+      ['A', 'B', 'C'].forEach(n => {
+        if (t >= ARR[n] && t <= fin[n] && r.run[t - 1] !== n) {
+          h += '<div class="wc" style="left:' + (13 + (t - 1) * 19) + 'px;top:' + (108 + k * 16) + 'px;--c:var(--p' + n + ');transition-delay:' + t * 0.09 + 's"></div>'; k++; wt++;
+        }
+      });
+    }
+    r.kw = kw; r.wt = wt;
+    h += '<div class="big kw"><b>' + kw + '</b><span>Kontext&shy;wechsel</span></div>';
+    h += '<div class="big wt"><b>' + wt + '</b><span>Warte&shy;kästchen<br>insgesamt</span></div>';
+    h += '<div class="need"><small>Muss vorher wissen</small><b>' + r.need + '</b><span>' + r.why + '</span></div>';
+    h += '<div class="stamp"></div><svg class="x" viewBox="0 0 238 300" preserveAspectRatio="none"><line x1="16" y1="16" x2="222" y2="284"/><line x1="222" y1="16" x2="16" y2="284" style="transition-delay:0.3s"/></svg>';
+    const c = document.createElement('div'); c.className = 'card'; c.style.left = 10 + i * 246 + 'px'; c.innerHTML = h; cards.appendChild(c); card[r.id] = c;
+  });
+
+  const V = {
+    kw: { fcfs: ['win', 'wenigste Wechsel'], sjf: ['note', 'Auch 2, solange nicht unterbrochen wird. Ohne Unterbrechen sind es immer n − 1 Wechsel.'], rr: ['lose', ''] },
+    wait: { sjf: ['win', 'kürzeste Schlange'], rr: ['lose', ''] },
+    know: { sjf: ['out', 'fällt weg'], fcfs: ['ok', 'geht'], prio: ['ok', 'geht'], rr: ['ok', 'geht'] }
+  };
+
+  let scene = null;
+  function draw(st, instant) {
+    if (instant) stage.classList.add('noanim');
+    const sum = scene.mode === 'sum';
+    stage.className = 'stage' + (instant ? ' noanim' : '') + ' mode-' + scene.mode + ' m' + st.m + (st.s ? ' s1' : '');
+    cards.classList.toggle('off', sum); $('sum').classList.toggle('off', !sum);
+    $('q').classList.toggle('off', sum); $('qt').textContent = scene.q || '';
+    R.forEach(r => {
+      const v = (V[scene.mode] || {})[r.id] || ['', ''];
+      card[r.id].className = 'card ' + v[0];
+      card[r.id].querySelector('.stamp').textContent = v[1];
+    });
+    if (instant) { void stage.offsetWidth; stage.classList.remove('noanim'); }
+  }
+
+  let timers = [], busy = false, target = null;
+  const later = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const stop = () => { timers.forEach(clearTimeout); timers = []; };
+  const endPlay = () => { busy = false; ui(); };
+  function finish() { stop(); busy = false; draw(target, true); ui(); }
+  function play(from, to) { busy = true; target = to; ui(); draw(to, false); later(to.m === 1 ? 2200 : 1500, endPlay); }
+
+  const S = [
+    { dot: 'a', mode: 'kw', act: 'Aufgabe 3 a)', title: 'a) Wenig Zeit für Kontextwechsel', q: 'Es soll möglichst wenig Zeit für Kontextwechsel verwendet werden.', beats: [
+      { say: 'Oben stehen die vier Abläufe aus Aufgabe 1. Welche Regel würdet ihr nehmen, wenn Kontextwechsel teuer sind? Überlegt kurz.' },
+      { say: 'Zählen wir nach. An jedem Strich wechselt die CPU von einem Prozess zum nächsten.', m: 1 },
+      { say: '<b>FCFS.</b> Jeder Prozess rechnet genau einmal am Stück, weniger Wechsel gehen nicht. Round Robin wechselt nach fast jeder Zeitscheibe.', m: 2 },
+      { say: 'Für Genaue: SJF ohne Unterbrechen hat genauso wenige Wechsel, denn auch dort rechnet jeder Prozess einmal am Stück. Die erwartete Antwort ist FCFS: die einfachste Regel, und bei SJF mit Unterbrechen wären es mehr Wechsel.' }
+    ] },
+    { dot: 'b', mode: 'wait', act: 'Aufgabe 3 b)', title: 'b) Wenige wartende Prozesse', q: 'Die Anzahl an wartenden Prozessen soll gering gehalten werden.', beats: [
+      { say: 'Jetzt soll die Warteschlange möglichst kurz bleiben. Welche Regel schafft das?' },
+      { say: 'Unter jeder Zeiteinheit steht jetzt, wie viele Prozesse gerade warten. Ein schraffiertes Kästchen ist ein wartender Prozess in dieser Zeiteinheit.', m: 1 },
+      { say: '<b>SJF.</b> Kurze Prozesse sind schnell fertig und verlassen das System. So bleibt die Schlange kurz. Deshalb hat SJF auch die kleinste mittlere Verweildauer.', m: 2 },
+      { say: 'Priority kommt hier auf dieselbe Zahl. Das liegt aber nur an diesen Prioritäten. Mit anderen Prioritäten wäre Priority schlechter oder höchstens gleich gut.' }
+    ] },
+    { dot: 'c', mode: 'know', act: 'Aufgabe 3 c)', title: 'c) Die Dauer ist nicht bekannt', q: 'Die Ausführungszeiten sind nicht vorher bekannt.', beats: [
+      { say: 'Bisher stand die Dauer immer in der Tabelle. Was, wenn niemand weiß, wie lange ein Prozess rechnen wird?' },
+      { say: 'Schauen wir, was jede Regel vorher über einen Prozess wissen muss.', m: 1 },
+      { say: '<b>Nicht SJF.</b> Nur SJF braucht die Dauer. FCFS, Priority und Round Robin funktionieren ohne sie weiter.', m: 2 },
+      { say: 'In echten Systemen ist das der Normalfall: Die Dauer kennt man fast nie vorher. Man kann sie höchstens aus dem bisherigen Verhalten schätzen.' }
+    ] },
+    { dot: '=', mode: 'sum', act: 'Aufgabe 3 · Überblick', title: 'Drei Ziele, drei Antworten', beats: [
+      { say: 'Alle drei Antworten auf einen Blick.', s: 1 },
+      { say: 'Die wichtigste Erkenntnis: Es gibt <b>keine beste Regel</b>. Jede Regel ist für ein anderes Ziel gut. Man muss zuerst wissen, was man erreichen will.' }
+    ] }
+  ];
+
+  function expand(sc) {
+    const steps = []; let st = { m: 0, s: 0 };
+    sc.beats.forEach(b => {
+      const nx = { ...st }; if (b.m != null) nx.m = b.m; if (b.s != null) nx.s = b.s;
+      if (b.m != null || b.s != null) { steps.push({ say: b.say, st: { ...st } }); steps.push({ say: b.say, st: nx, play: true }); }
+      else steps.push({ say: b.say, st: nx });
+      st = nx;
+    });
+    return steps;
+  }
+
+  let cur = 0, k = 0, steps = [];
+  const dots = $('dots');
+  S.forEach((s, i) => { const d = document.createElement('button'); d.className = 'dot'; d.textContent = s.dot; d.title = s.title; d.onclick = () => show(i); dots.appendChild(d); });
+  function ui() {
+    const nx = steps[k + 1];
+    $('next').textContent = busy ? 'läuft …' : nx && nx.play ? 'Zeigen →' : 'Weiter →';
+    $('next').classList.toggle('play', !busy && !!(nx && nx.play));
+    $('next').disabled = !busy && !nx && cur === S.length - 1;
+    $('prev').disabled = cur === 0 && k === 0;
+    $('cnt').textContent = 'Schritt ' + (k + 1) + ' / ' + steps.length;
+  }
+  function go(j, anim) {
+    const s = steps[j]; k = j;
+    $('say').innerHTML = s.say;
+    stop(); busy = false; target = s.st;
+    if (anim && s.play) play(null, s.st); else draw(s.st, true);
+    ui();
+  }
+  function show(i, last) {
+    stop(); busy = false; cur = i; scene = S[i]; steps = expand(scene);
+    $('act').textContent = scene.act; $('ttl').textContent = scene.title;
+    [...dots.children].forEach((d, n) => { if (n === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
+    k = 0; go(last ? steps.length - 1 : 0, false);
+  }
+  function next() {
+    if (busy) return finish();
+    if (k < steps.length - 1) go(k + 1, true); else if (cur < S.length - 1) show(cur + 1);
+  }
+  function prev() {
+    if (busy) finish();
+    if (k > 0) go(k - 1, false); else if (cur > 0) show(cur - 1, true);
+  }
+  $('next').onclick = next; $('prev').onclick = prev; $('replay').onclick = () => show(cur);
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'r' || e.key === 'R') show(cur);
+  });
+
+  function fit() {
+    const w = box.clientWidth, s = Math.max(0.5, Math.min(w / 1000, (window.innerHeight - 250) / 380, 1.6));
+    stage.style.transform = 'scale(' + s + ')'; stage.style.left = (w - 1000 * s) / 2 + 'px'; box.style.height = 380 * s + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.__go = (i, j) => { show(i); if (j) go(Math.min(j, steps.length - 1), false); };
+  window.__R = R;
+  fit(); show(0);
+})();
+</script>
+</body>
+</html>
