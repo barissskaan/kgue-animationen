@@ -2,7 +2,7 @@
 
 Interaktive Animationen zu den Kleingruppenübungen 1–5: Theorie und Lösungen, Schritt für Schritt.
 
-Öffnen: `index.html` im Browser, oder direkt hier: https://barissskaan.github.io/gin3-kgue-animationen-v2/
+Öffnen: `index.html` im Browser, oder direkt hier: https://barissskaan.github.io/kgue-animationen/
 
 | KGÜ | Thema |
 |---|---|
